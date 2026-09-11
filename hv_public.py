@@ -46,11 +46,13 @@ def _one_video(url: str, caption: str = "") -> str:
         else ""
     )
     if kind == "iframe":
+        # Streamlit sanitises st.html and drops <iframe>, so the player is
+        # described here and built by the enhancement script, which runs
+        # outside the sanitiser. The watch link underneath stays as the
+        # fallback if that script never runs.
         inner = (
-            f'<iframe src="{attr(src)}" title="{attr(caption or "Video")}" '
-            'allow="accelerometer; autoplay; clipboard-write; encrypted-media; picture-in-picture" '
-            'referrerpolicy="strict-origin-when-cross-origin" allowfullscreen loading="lazy" '
-            'sandbox="allow-scripts allow-same-origin allow-presentation allow-popups"></iframe>'
+            f'<div class="hv-embed" data-embed="{attr(src)}" '
+            f'data-title="{attr(caption or "Video")}"></div>'
         )
     else:
         inner = f'<video src="{attr(src)}" controls preload="metadata" playsinline></video>'
@@ -545,17 +547,68 @@ def _contact(site: dict, reel: str) -> None:
 
 # --------------------------------------------------------------------------
 def _enhance() -> None:
-    """Purely additive. The page is complete and readable without this."""
+    """Progressive enhancement.
+
+    Also builds the video embeds: Streamlit strips <iframe> out of st.html,
+    so each embed is emitted as a placeholder and turned into a real iframe
+    here. The host is re-checked against the allowlist before anything is
+    created, so a tampered attribute cannot load a foreign frame.
+    """
     import streamlit.components.v1 as components
 
     components.html(
         """
 <script>
 (function () {
+  var ALLOWED = ["www.youtube-nocookie.com", "player.vimeo.com"];
+
+  function build(box) {
+    if (!box || box.dataset.hvBuilt) return;
+    var src = box.getAttribute("data-embed") || "";
+    var u;
+    try { u = new URL(src); } catch (e) { return; }
+    if (u.protocol !== "https:" || ALLOWED.indexOf(u.hostname) === -1) return;
+    box.dataset.hvBuilt = "1";
+    var f = box.ownerDocument.createElement("iframe");
+    f.src = src;
+    f.title = box.getAttribute("data-title") || "Video";
+    f.loading = "lazy";
+    f.allowFullscreen = true;
+    f.setAttribute("referrerpolicy", "strict-origin-when-cross-origin");
+    f.setAttribute("allow",
+      "accelerometer; autoplay; clipboard-write; encrypted-media; picture-in-picture");
+    f.setAttribute("sandbox",
+      "allow-scripts allow-same-origin allow-presentation allow-popups");
+    box.appendChild(f);
+  }
+
+  function hydrate(root) {
+    (root || window.parent.document)
+      .querySelectorAll(".hv-embed:not([data-hv-built])").forEach(build);
+  }
+
+  function hydrateTarget(d) {
+    var h = d.defaultView.location.hash;
+    if (!h || h.length < 2) return;
+    var el = null;
+    try { el = d.querySelector(h); } catch (e) { return; }
+    if (el) hydrate(el);
+  }
+
   try {
     var d = window.parent.document, w = window.parent;
     if (!d || d.body.dataset.hvEnhanced) return;
     d.body.dataset.hvEnhanced = "1";
+
+    // players outside a dialog load right away; a project's players wait
+    // until that project is opened, so the page does not pull down a dozen
+    // embeds nobody asked for
+    d.querySelectorAll(".hv-embed").forEach(function (box) {
+      if (!box.closest(".hv-modal")) build(box);
+    });
+    hydrateTarget(d);
+    w.addEventListener("hashchange", function () { hydrateTarget(d); });
+
     var spot = d.getElementById("hv-spot");
     if (spot && w.matchMedia("(pointer:fine)").matches &&
         !w.matchMedia("(prefers-reduced-motion: reduce)").matches) {

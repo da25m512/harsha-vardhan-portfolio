@@ -105,7 +105,10 @@ EXTRA = """
   transition: background .3s;
 }
 .hv-video-fallback:hover { background: rgba(87,200,176,.07); }
-.hv-video iframe, .hv-video video { z-index:1; }
+.hv-video iframe, .hv-video video, .hv-embed { z-index:1; }
+.hv-embed { position:absolute; inset:0; }
+.hv-embed:empty { pointer-events:none; }
+.hv-embed iframe { position:absolute; inset:0; width:100%; height:100%; border:0; }
 
 /* ---------- cursor spotlight (enhancement only) ---------- */
 #hv-spot {
