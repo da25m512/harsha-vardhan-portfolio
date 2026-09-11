@@ -23,7 +23,11 @@ from hv_store import GitHubStore
 
 
 def _md(html: str) -> None:
-    st.markdown(html, unsafe_allow_html=True)
+    writer = getattr(st, "html", None)
+    if callable(writer):
+        writer(html)
+    else:  # pragma: no cover
+        st.markdown(html, unsafe_allow_html=True)
 
 
 # --------------------------------------------------------------------------
@@ -425,7 +429,9 @@ def _tab_messages(c: dict) -> None:
         if view == "Published" and not appr:
             continue
         with st.container(border=True):
-            st.markdown(f"**{esc(m.get('name'))}** · {esc(m.get('role') or '—')} · {esc(m.get('at'))}")
+            st.markdown(
+                f"**{m.get('name')}** · {m.get('role') or '—'} · {m.get('at')}"
+            )
             st.write(m.get("message", ""))
             a, b = st.columns(2)
             if not appr:

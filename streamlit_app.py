@@ -29,6 +29,16 @@ from hv_security import enforce_session_timeout, is_admin  # noqa: E402
 from hv_theme import css  # noqa: E402
 
 
+def _inject(html: str) -> None:
+    """st.html is the supported way to add raw HTML and CSS; st.markdown
+    escapes <style> in current Streamlit versions."""
+    writer = getattr(st, "html", None)
+    if callable(writer):
+        writer(html)
+    else:  # pragma: no cover
+        st.markdown(html, unsafe_allow_html=True)
+
+
 def main() -> None:
     try:
         content = D.load_content()
@@ -40,9 +50,12 @@ def main() -> None:
         }
 
     site = content["site"]
-    st.markdown(
-        css(site.get("accent", "#FF4A1C"), site.get("accent_2", "#F5B841"), bool(site.get("grain", True))),
-        unsafe_allow_html=True,
+    _inject(
+        css(
+            site.get("accent", "#57C8B0"),
+            site.get("accent_2", "#E4813F"),
+            bool(site.get("grain", True)),
+        )
     )
 
     enforce_session_timeout()
@@ -57,11 +70,10 @@ def main() -> None:
 
     public.render(content)
     label = "Admin console" if is_admin() else "Admin"
-    st.markdown(
-        '<div style="text-align:center;padding:0 0 26px;font-family:\'IBM Plex Mono\',monospace;'
+    _inject(
+        '<div style="text-align:center;padding:0 0 26px;font-family:monospace;'
         'font-size:9.5px;letter-spacing:.22em;text-transform:uppercase">'
-        f'<a href="?view=admin" style="color:rgba(233,231,223,.24);text-decoration:none">{label}</a></div>',
-        unsafe_allow_html=True,
+        f'<a href="?view=admin" style="color:rgba(233,231,223,.24);text-decoration:none">{label}</a></div>'
     )
 
 

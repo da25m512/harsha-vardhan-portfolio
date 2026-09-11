@@ -33,7 +33,17 @@ def _slug(s: str) -> str:
 
 
 def _md(html: str) -> None:
-    st.markdown(html, unsafe_allow_html=True)
+    """Inject raw HTML.
+
+    Streamlit sanitises `st.markdown(unsafe_allow_html=True)` hard enough
+    that <style> is rendered as visible text, so `st.html` is the supported
+    route for this. Fall back to markdown on older versions.
+    """
+    writer = getattr(st, "html", None)
+    if callable(writer):
+        writer(html)
+    else:  # pragma: no cover - Streamlit < 1.33
+        st.markdown(html, unsafe_allow_html=True)
 
 
 def _title(text: str) -> str:
