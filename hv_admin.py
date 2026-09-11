@@ -123,6 +123,85 @@ def _upload(label: str, folder: str, kind: str, key: str) -> str | None:
         return None
 
 
+@st.cache_data(ttl=600, show_spinner=False)
+def _probe(url: str) -> tuple[str, str]:
+    from hv_security import probe_embed
+    return probe_embed(url)
+
+
+def _link_status(url: str) -> None:
+    """Tell the director straight away whether a link will actually play."""
+    if not (url or "").strip():
+        return
+    with st.spinner("Checking the link…"):
+        status, message = _probe(url.strip())
+    if not status:
+        return
+    if status == "ok":
+        st.success(message, icon="▶️")
+    elif status == "private":
+        st.error(message, icon="🔒")
+    elif status in ("missing", "unsupported"):
+        st.warning(message, icon="⚠️")
+    elif status == "blocked":
+        st.warning(message, icon="🚫")
+    else:
+        st.info(message, icon="ℹ️")
+
+
+
+# --------------------------------------------------------------------------
+# Media fields
+# --------------------------------------------------------------------------
+# A Streamlit file_uploader keeps holding the chosen file across reruns, and a
+# widget's state cannot be cleared after the widget exists. So "Remove" has to
+# retire the uploader by giving it a fresh key, or the next rerun immediately
+# re-applies the file that was just removed.
+def _uploader_key(base: str) -> str:
+    return f"{base}__{st.session_state.get(f'_gen_{base}', 0)}"
+
+
+def _retire_uploader(base: str) -> None:
+    st.session_state.pop(f"_up_done_{_uploader_key(base)}", None)
+    st.session_state[f"_gen_{base}"] = st.session_state.get(f"_gen_{base}", 0) + 1
+
+
+def _media_field(
+    holder: dict,
+    field: str,
+    *,
+    base: str,
+    folder: str,
+    kind: str,
+    label: str,
+    on_change=None,
+) -> None:
+    """Preview + upload + remove for one media field.
+
+    `on_change` persists the record straight away, so Remove actually removes
+    rather than quietly reverting on the next interaction.
+    """
+    if holder.get(field):
+        _preview(holder[field], "video" if kind == "video" else "image")
+
+    new_url = _upload(f"Upload {label}", folder, kind, _uploader_key(base))
+    if new_url and new_url != holder.get(field):
+        holder[field] = new_url
+        if on_change is not None:
+            _guarded(on_change, f"{label.capitalize()} saved.")
+        _retire_uploader(base)
+        st.rerun()
+
+    if holder.get(field) and st.button(f"Remove {label}", key=f"rm_{base}"):
+        holder[field] = ""
+        _retire_uploader(base)
+        if on_change is not None:
+            _guarded(on_change, f"{label.capitalize()} removed.")
+        else:
+            st.success(f"{label.capitalize()} removed.", icon="✅")
+        st.rerun()
+
+
 def _preview(url: str, kind: str = "image") -> None:
     if not url:
         return
@@ -249,50 +328,34 @@ def _tab_profile(c: dict) -> None:
     s["socials"] = new_socials
 
     st.subheader("Hero & portrait media")
+    st.caption("Uploading or removing here saves the profile straight away.")
+    save_profile = lambda: D.save_site(s)  # noqa: E731
     a, b, cc = st.columns(3)
     with a:
         st.caption("Hero background image")
-        _preview(s.get("hero_image", ""))
-        u = _upload("Replace hero image", "hero", "image", "up_hero")
-        if u:
-            s["hero_image"] = u
-        if s.get("hero_image") and st.button("Remove hero image", key="rm_hero"):
-            s["hero_image"] = ""
+        _media_field(s, "hero_image", base="up_hero", folder="hero",
+                     kind="image", label="hero image", on_change=save_profile)
     with b:
         st.caption("Hero background video (loops, muted, ≤20 MB)")
-        _preview(s.get("hero_video", ""), "video")
-        u = _upload("Replace hero video", "hero", "video", "up_herov")
-        if u:
-            s["hero_video"] = u
-        if s.get("hero_video") and st.button("Remove hero video", key="rm_herov"):
-            s["hero_video"] = ""
+        _media_field(s, "hero_video", base="up_herov", folder="hero",
+                     kind="video", label="hero video", on_change=save_profile)
     with cc:
         st.caption("Portrait")
-        _preview(s.get("portrait", ""))
-        u = _upload("Replace portrait", "portrait", "image", "up_portrait")
-        if u:
-            s["portrait"] = u
-        if s.get("portrait") and st.button("Remove portrait", key="rm_port"):
-            s["portrait"] = ""
+        _media_field(s, "portrait", base="up_portrait", folder="portrait",
+                     kind="image", label="portrait", on_change=save_profile)
 
     st.subheader("Showreel")
     s["showreel_url"] = st.text_input(
         "YouTube or Vimeo link", s.get("showreel_url", ""),
         help="Only YouTube and Vimeo links are embedded, for safety.",
     )
-    if s["showreel_url"]:
-        from hv_security import embed_src
-
-        if not embed_src(s["showreel_url"])[0]:
-            st.warning("That link isn't a recognised YouTube or Vimeo video.", icon="⚠️")
-    st.caption("Or upload the reel directly (up to 20 MB). An uploaded file wins over the link.")
-    if s.get("showreel_file"):
-        _preview(s["showreel_file"], "video")
-    u = _upload("Upload showreel video", "showreel", "video", "up_reel")
-    if u:
-        s["showreel_file"] = u
-    if s.get("showreel_file") and st.button("Remove uploaded reel", key="rm_reel"):
-        s["showreel_file"] = ""
+    _link_status(s.get("showreel_url", ""))
+    st.caption(
+        "You can also upload the reel directly (up to 20 MB). If you have both a "
+        "link and an uploaded file, the site shows both players."
+    )
+    _media_field(s, "showreel_file", base="up_reel", folder="showreel",
+                 kind="video", label="uploaded reel", on_change=save_profile)
     s["showreel_caption"] = st.text_input("Caption under the reel", s.get("showreel_caption", ""))
 
     st.divider()
@@ -333,55 +396,33 @@ def _tab_projects(c: dict) -> None:
     p["logline"] = st.text_input("Logline (one line, shown on hover)", p.get("logline", ""))
     p["synopsis"] = st.text_area("Synopsis", p.get("synopsis", ""), height=140)
     p["credits"] = st.text_area("Credits (one per line)", p.get("credits", ""), height=110)
-    a, b = st.columns(2)
-    p["video_url"] = a.text_input(
-        "YouTube / Vimeo link", p.get("video_url", ""),
-        help="Best for anything longer than a minute or two.",
+    p["link"] = st.text_input(
+        "External link (optional)", p.get("link", ""),
+        help="A festival page, a review — anything worth linking out to.",
     )
-    p["link"] = b.text_input("External link (optional)", p.get("link", ""))
-
-    st.markdown("**Video file for this project**")
-    st.caption(
-        "Upload a clip directly (MP4, WebM or MOV, up to 20 MB). An uploaded file "
-        "plays instead of the link above. For anything longer, put it on YouTube or "
-        "Vimeo and paste the link — there is no size limit that way."
-    )
-    if p.get("video_file"):
-        _preview(p["video_file"], "video")
-    u = _upload("Upload a video", "projects", "video", f"up_vid_{idx}")
-    if u:
-        p["video_file"] = u
-    if p.get("video_file") and st.button("Remove uploaded video", key=f"rmv{idx}"):
-        p["video_file"] = ""
     p["tags"] = [t.strip() for t in st.text_input("Tags (comma separated)", ", ".join(p.get("tags") or [])).split(",") if t.strip()]
     a, b = st.columns(2)
     p["featured"] = a.toggle("Feature it (wide card)", value=bool(p.get("featured")))
     p["published"] = b.toggle("Visible on the public site", value=bool(p.get("published", True)))
 
     st.markdown("**Poster**")
-    _preview(p.get("poster", ""))
-    u = _upload("Upload poster / key frame", "projects", "image", f"up_poster_{idx}")
-    if u:
-        p["poster"] = u
-    if p.get("poster") and st.button("Remove poster", key=f"rmp{idx}"):
-        p["poster"] = ""
+    st.caption("The single frame that represents this project on the contact sheet.")
+    _media_field(p, "poster", base=f"up_poster_{idx}", folder="projects",
+                 kind="image", label="poster",
+                 on_change=(lambda: _persist_projects(projects, idx, p)) if idx >= 0 else None)
 
-    st.markdown("**Gallery stills for this project**")
-    gal = list(p.get("gallery") or [])
-    if gal:
-        cols = st.columns(min(4, len(gal)))
-        for i, gurl in enumerate(gal):
-            with cols[i % len(cols)]:
-                _preview(gurl)
-                if st.button("Remove", key=f"rmg{idx}_{i}"):
-                    gal.pop(i)
-                    p["gallery"] = gal
-                    if _guarded(lambda: _persist_projects(projects, idx, p), "Still removed."):
-                        st.rerun()
-    u = _upload("Add a still", "projects", "image", f"up_gal_{idx}")
-    if u:
-        gal.append(u)
-    p["gallery"] = gal
+    st.divider()
+    st.markdown("**Videos**")
+    st.caption(
+        "Add as many as you like — YouTube/Vimeo links, uploaded clips, or both. "
+        "Every one of them appears on the project page."
+    )
+    _video_manager(p, projects, idx)
+
+    st.divider()
+    st.markdown("**Stills**")
+    st.caption("Images shown in a grid on the project page.")
+    _gallery_manager(p, projects, idx)
 
     st.divider()
     a, b = st.columns([3, 1])
@@ -401,6 +442,126 @@ def _tab_projects(c: dict) -> None:
             else:
                 st.session_state[f"confirm_del_{idx}"] = True
                 st.warning("Press Delete once more to confirm.", icon="⚠️")
+
+
+def _save_project_now(projects: list[dict], idx: int, p: dict):
+    """Persist immediately, but only for a project that already exists."""
+    if idx < 0:
+        return None
+    return lambda: _persist_projects(projects, idx, p)
+
+
+def _video_manager(p: dict, projects: list[dict], idx: int) -> None:
+    """Any number of links and uploads, each removable."""
+    videos = list(p.get("videos") or [])
+    persist = _save_project_now(projects, idx, p)
+
+    for i, v in enumerate(videos):
+        url = str((v or {}).get("url") or "")
+        is_file = (v or {}).get("type") == "file"
+        with st.container(border=True):
+            head, act = st.columns([5, 1])
+            head.caption(("🎞 Uploaded clip" if is_file else "▶️ Link") + f" · {i + 1}")
+            if is_file:
+                _preview(url, "video")
+            else:
+                st.text_input("Link", url, key=f"vlink_{idx}_{i}", disabled=True,
+                              label_visibility="collapsed")
+                _link_status(url)
+            if act.button("Remove", key=f"rmvid_{idx}_{i}", width="stretch"):
+                videos.pop(i)
+                p["videos"] = videos
+                p["video_url"] = ""
+                p["video_file"] = ""
+                if persist:
+                    _guarded(persist, "Video removed.")
+                else:
+                    st.success("Video removed.", icon="✅")
+                st.rerun()
+
+    st.markdown("**Add a YouTube or Vimeo link**")
+    new_link = st.text_input(
+        "Paste the link", key=f"newvid_{idx}", label_visibility="collapsed",
+        placeholder="https://youtu.be/…",
+    )
+    if new_link.strip():
+        _link_status(new_link.strip())
+    if st.button("➕ Add this link", key=f"addvid_{idx}"):
+        u = new_link.strip()
+        from hv_security import embed_src
+        if not u:
+            st.warning("Paste a link first.", icon="⚠️")
+        elif not embed_src(u)[0]:
+            st.error("Only YouTube and Vimeo links can be embedded.", icon="🚫")
+        elif any(str((v or {}).get("url")) == u for v in videos):
+            st.warning("That video is already on this project.", icon="⚠️")
+        else:
+            videos.append({"type": "link", "url": u})
+            p["videos"] = videos
+            st.session_state.pop(f"newvid_{idx}", None)
+            if persist:
+                _guarded(persist, "Link added.")
+            else:
+                st.success("Link added.", icon="✅")
+            st.rerun()
+
+    st.caption(
+        "A **Private** YouTube video will never play here — YouTube blocks embedding "
+        "for private videos on every website. Set it to **Unlisted** in YouTube "
+        "Studio instead: unlisted stays out of search and off your channel, but "
+        "plays fine on this site."
+    )
+
+    st.markdown("**Or upload a clip** (MP4, WebM, MOV — up to 20 MB)")
+    base = f"up_vid_{idx}"
+    got = _upload("Upload a video", "projects", "video", _uploader_key(base))
+    if got and not any(str((v or {}).get("url")) == got for v in videos):
+        videos.append({"type": "file", "url": got})
+        p["videos"] = videos
+        _retire_uploader(base)
+        if persist:
+            _guarded(persist, "Video added.")
+        else:
+            st.success("Video added.", icon="✅")
+        st.rerun()
+
+
+def _gallery_manager(p: dict, projects: list[dict], idx: int) -> None:
+    """Any number of stills, each removable."""
+    gal = [g for g in (p.get("gallery") or []) if str(g or "").strip()]
+    persist = _save_project_now(projects, idx, p)
+
+    if gal:
+        per_row = 4
+        for row_start in range(0, len(gal), per_row):
+            row = gal[row_start:row_start + per_row]
+            cols = st.columns(per_row)
+            for offset, url in enumerate(row):
+                i = row_start + offset
+                with cols[offset]:
+                    _preview(url)
+                    if st.button("Remove", key=f"rmstill_{idx}_{i}", width="stretch"):
+                        gal.pop(i)
+                        p["gallery"] = gal
+                        if persist:
+                            _guarded(persist, "Still removed.")
+                        else:
+                            st.success("Still removed.", icon="✅")
+                        st.rerun()
+    else:
+        st.caption("No stills yet.")
+
+    base = f"up_gal_{idx}"
+    got = _upload("Add a still", "projects", "image", _uploader_key(base))
+    if got and got not in gal:
+        gal.append(got)
+        p["gallery"] = gal
+        _retire_uploader(base)
+        if persist:
+            _guarded(persist, "Still added.")
+        else:
+            st.success("Still added.", icon="✅")
+        st.rerun()
 
 
 def _persist_projects(projects: list[dict], idx: int, p: dict) -> None:

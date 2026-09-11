@@ -89,8 +89,9 @@ DEFAULT_PROJECT: dict[str, Any] = {
     "credits": "",
     "poster": "",
     "gallery": [],
-    "video_url": "",
-    "video_file": "",
+    "videos": [],          # [{"type": "link"|"file", "url": str}]
+    "video_url": "",       # legacy single link, migrated into `videos`
+    "video_file": "",      # legacy single upload, migrated into `videos`
     "tags": [],
     "featured": False,
     "published": True,
@@ -221,7 +222,7 @@ def load_content() -> dict[str, Any]:
     }
     return {
         "site": merged,
-        "projects": _fetch(PROJECTS_PATH, "[]", v) or [],
+        "projects": normalise_projects(_fetch(PROJECTS_PATH, "[]", v) or []),
         "timeline": _fetch(TIMELINE_PATH, "[]", v) or [],
         "gallery": _fetch(GALLERY_PATH, "[]", v) or [],
         "press": _fetch(PRESS_PATH, "[]", v) or [],
@@ -247,6 +248,37 @@ def upload(folder: str, uploaded_file) -> str:
     blob = uploaded_file.getvalue()
     path = new_media_path(folder, uploaded_file.name)
     return get_store().write_binary(path, blob, f"content: add {path}")
+
+
+def normalise_project(p: dict) -> dict:
+    """Bring a stored project up to the current shape.
+
+    Projects used to carry one link and one uploaded file. Both now live in
+    an ordered `videos` list so a project can have as many of each as it
+    likes; the old fields are folded in once and then left alone.
+    """
+    out = {**DEFAULT_PROJECT, **(p or {})}
+    videos = [
+        v for v in (out.get("videos") or [])
+        if isinstance(v, dict) and str(v.get("url") or "").strip()
+    ]
+    known = {str(v.get("url")).strip() for v in videos}
+    for legacy_key, vtype in (("video_file", "file"), ("video_url", "link")):
+        url = str(out.get(legacy_key) or "").strip()
+        if url and url not in known:
+            videos.append({"type": vtype, "url": url})
+            known.add(url)
+    out["videos"] = videos
+    out["gallery"] = [g for g in (out.get("gallery") or []) if str(g or "").strip()]
+    return out
+
+
+def normalise_projects(items: list[dict]) -> list[dict]:
+    return [normalise_project(p) for p in (items or [])]
+
+
+def project_videos(p: dict) -> list[dict]:
+    return normalise_project(p)["videos"]
 
 
 def sorted_projects(projects: list[dict], include_drafts: bool = False) -> list[dict]:

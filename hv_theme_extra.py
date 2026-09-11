@@ -77,6 +77,15 @@ EXTRA = """
 }
 .hv-tag:hover { border-color:var(--accent); color:var(--accent); }
 
+/* ---------- several videos on one project ---------- */
+.hv-video-grid { display:grid; gap: clamp(10px,1.2vw,18px); }
+.hv-video-grid.two { grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr)); }
+.hv-video-item { margin:0; }
+.hv-video-cap {
+  font-family: var(--mono); font-size:9.5px; letter-spacing:.16em;
+  text-transform:uppercase; color:var(--paper-3); margin-top:8px;
+}
+
 /* ---------- play badge on cards that carry a video ---------- */
 .hv-play {
   position:absolute; left:22px; top:9px; z-index:3;

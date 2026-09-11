@@ -303,3 +303,81 @@ def check_message(name: str, message: str, honeypot: str) -> tuple[bool, str]:
 
 def mark_posted() -> None:
     st.session_state["_last_post"] = time.time()
+
+# --------------------------------------------------------------------------
+# Is this video actually embeddable?
+# --------------------------------------------------------------------------
+# YouTube refuses to embed Private videos anywhere — that is a YouTube rule,
+# not something a site can work around. Unlisted videos embed normally. Both
+# platforms expose an oEmbed endpoint that tells us which case we are in, so
+# the director finds out while editing instead of via a dead player.
+PROBE_TIMEOUT = 8
+
+
+def probe_embed(url: str) -> tuple[str, str]:
+    """Return (status, message).
+
+    status: ok | private | missing | blocked | unsupported | unknown
+    """
+    kind, _src = embed_src(url)
+    if not kind:
+        if (url or "").strip():
+            return (
+                "unsupported",
+                "That isn't a YouTube or Vimeo link. Only those two are embedded, "
+                "for safety — or upload the file directly below.",
+            )
+        return ("", "")
+    if kind == "file":
+        return ("ok", "Uploaded file — plays directly on the site.")
+
+    try:
+        import requests
+    except Exception:  # pragma: no cover
+        return ("unknown", "")
+
+    u = urlparse(url)
+    host = (u.hostname or "").lower()
+    if host.endswith("vimeo.com"):
+        endpoint = "https://vimeo.com/api/oembed.json"
+    else:
+        endpoint = "https://www.youtube.com/oembed"
+
+    try:
+        r = requests.get(
+            endpoint,
+            params={"url": url, "format": "json"},
+            timeout=PROBE_TIMEOUT,
+            headers={"User-Agent": "harsha-portfolio-cms"},
+        )
+    except Exception:
+        return ("unknown", "Couldn't reach the video host to check this link.")
+
+    if r.status_code == 200:
+        try:
+            title = (r.json() or {}).get("title") or ""
+        except Exception:
+            title = ""
+        return ("ok", f"Will play on the site{': ' + title if title else ''}.")
+    if r.status_code == 401:
+        return (
+            "private",
+            "This video is **Private** on YouTube. Private videos cannot be embedded "
+            "on any website — YouTube blocks it. In YouTube Studio open the video, "
+            "set **Visibility → Unlisted**, and save. Unlisted keeps it out of search "
+            "and off your channel, but lets it play here.",
+        )
+    if r.status_code in (403,):
+        return (
+            "blocked",
+            "The video host refused this link. On Vimeo that usually means the video "
+            "is private or locked to specific domains; on YouTube it can mean "
+            "embedding is turned off for the video.",
+        )
+    if r.status_code == 404:
+        return (
+            "missing",
+            "No video found at that link. Check it's copied in full, and that the "
+            "video hasn't been deleted.",
+        )
+    return ("unknown", f"The video host answered {r.status_code}; try again shortly.")

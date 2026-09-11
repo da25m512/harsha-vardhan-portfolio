@@ -31,42 +31,55 @@ def _watch_url(url: str) -> str:
     return u
 
 
-def _video_block(
-    file_url: str = "", link_url: str = "", extra_style: str = "", label: str = "Play"
-) -> str:
-    """Render a video frame.
-
-    An uploaded file wins over a link, since uploading is the more deliberate
-    act. A plain link sits underneath the embed: if the embed renders it
-    covers the link, and if a sanitiser ever removes the iframe the viewer
-    still has a working way to watch. Only YouTube and Vimeo are embedded.
-    """
-    kind, src = embed_src(file_url or link_url)
-    if not kind and file_url and link_url:
-        kind, src = embed_src(link_url)
-    watch = _watch_url(link_url or file_url)
-    if watch and kind:
-        where = "Vimeo" if "vimeo" in watch else ("YouTube" if "yout" in watch else "the file")
-        fallback = (
-            f'<a class="hv-video-fallback" href="{attr(watch)}" target="_blank" '
-            f'rel="noopener noreferrer">Watch on {where} &#8599;</a>'
-        )
-    else:
-        fallback = '<div class="hv-video-empty">Reel in assembly</div>' 
+def _one_video(url: str, caption: str = "") -> str:
+    """One 16:9 frame. A watch link sits behind the player, so the video is
+    still reachable if an embed is ever blocked."""
+    kind, src = embed_src(url)
+    if not kind:
+        return ""
+    watch = _watch_url(url)
+    where = "Vimeo" if "vimeo" in watch else ("YouTube" if "yout" in watch else "the file")
+    fallback = (
+        f'<a class="hv-video-fallback" href="{attr(watch)}" target="_blank" '
+        f'rel="noopener noreferrer">Watch on {where} &#8599;</a>'
+        if watch
+        else ""
+    )
     if kind == "iframe":
         inner = (
-            f'<iframe src="{attr(src)}" title="{attr(label)}" '
+            f'<iframe src="{attr(src)}" title="{attr(caption or "Video")}" '
             'allow="accelerometer; autoplay; clipboard-write; encrypted-media; picture-in-picture" '
             'referrerpolicy="strict-origin-when-cross-origin" allowfullscreen loading="lazy" '
             'sandbox="allow-scripts allow-same-origin allow-presentation allow-popups"></iframe>'
         )
-    elif kind == "file":
-        inner = (
-            f'<video src="{attr(src)}" controls preload="metadata" playsinline></video>'
-        )
     else:
-        inner = ""
-    return f'<div class="hv-video hv-rise" style="{extra_style}">{fallback}{inner}</div>'
+        inner = f'<video src="{attr(src)}" controls preload="metadata" playsinline></video>'
+    cap = f'<div class="hv-video-cap">{esc(caption)}</div>' if caption else ""
+    return f'<figure class="hv-video-item"><div class="hv-video">{fallback}{inner}</div>{cap}</figure>'
+
+
+def _videos_html(videos: list[dict], extra_style: str = "") -> str:
+    """Every video on a project, each in its own labelled frame."""
+    frames = []
+    n_link = n_file = 0
+    for v in videos or []:
+        url = str((v or {}).get("url") or "")
+        kind, _ = embed_src(url)
+        if not kind:
+            continue
+        if (v or {}).get("type") == "file" or kind == "file":
+            n_file += 1
+            label = "Uploaded clip" if n_file == 1 else f"Uploaded clip {n_file}"
+        else:
+            n_link += 1
+            host = "Vimeo" if "vimeo" in url else "YouTube"
+            label = f"On {host}" if n_link == 1 else f"On {host} ({n_link})"
+        frames.append(_one_video(url, label if len(videos) > 1 else ""))
+    frames = [f for f in frames if f]
+    if not frames:
+        return ""
+    cls = "hv-video-grid" + (" two" if len(frames) > 1 else "")
+    return f'<div class="{cls}" style="{extra_style}">{"".join(frames)}</div>'
 
 
 def _slug(s: str) -> str:
@@ -260,9 +273,7 @@ def _card(p: dict, idx: int) -> str:
         else ""
     )
     log = f'<div class="hv-card-log">{esc(p.get("logline"))}</div>' if p.get("logline") else ""
-    playable = bool(
-        embed_src(p.get("video_file", ""))[0] or embed_src(p.get("video_url", ""))[0]
-    )
+    playable = any(embed_src(str((v or {}).get("url") or ""))[0] for v in (p.get("videos") or []))
     play = '<div class="hv-play" aria-hidden="true">&#9654;</div>' if playable else ""
     return f"""
 <a class="hv-card{' wide' if p.get('featured') else ''} hv-rise" data-cat="{attr(_slug(p.get('category') or 'other'))}"
@@ -295,15 +306,7 @@ def _modal(p: dict, idx: int) -> str:
         )
         if v
     )
-    has_video = embed_src(p.get("video_file", ""))[0] or embed_src(p.get("video_url", ""))[0]
-    video = (
-        _video_block(
-            p.get("video_file", ""), p.get("video_url", ""),
-            "margin-top:24px", str(p.get("title") or "Project video"),
-        )
-        if has_video
-        else ""
-    )
+    video = _videos_html(p.get("videos") or [], "margin-top:24px")
     gal = "".join(
         f'<img src="{img_src(g)}" alt="" loading="lazy">' for g in (p.get("gallery") or []) if img_src(g)
     )
@@ -386,8 +389,12 @@ def _work(site: dict, projects: list[dict], reel: str) -> None:
 
 # --------------------------------------------------------------------------
 def _showreel(site: dict, reel: str) -> None:
-    body = _video_block(
-        site.get("showreel_file", ""), site.get("showreel_url", ""), "", "Showreel"
+    reel = [
+        {"type": "file", "url": site.get("showreel_file", "")},
+        {"type": "link", "url": site.get("showreel_url", "")},
+    ]
+    body = _videos_html(reel) or (
+        '<div class="hv-video hv-rise"><div class="hv-video-empty">Reel in assembly</div></div>'
     )
     _md(
         _open(reel, [("Sec", "Reel"), ("Ratio", "16:9")], _title(site["section_titles"]["showreel"]), "reel")
@@ -578,7 +585,8 @@ def render(content: dict[str, Any]) -> None:
     stills = [g for g in content["gallery"] if img_src(g.get("url", ""))]
     notes = [m for m in content["messages"] if m.get("approved")]
     has_reel = bool(
-        embed_src(site.get("showreel_file", ""))[0] or embed_src(site.get("showreel_url", ""))[0]
+        embed_src(site.get("showreel_file", ""))[0]
+        or embed_src(site.get("showreel_url", ""))[0]
     )
 
     _hero(site)
