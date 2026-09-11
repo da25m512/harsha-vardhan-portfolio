@@ -198,7 +198,7 @@ def _marquee(site: dict) -> None:
 # --------------------------------------------------------------------------
 # Statement
 # --------------------------------------------------------------------------
-def _statement(site: dict, ledger: list[tuple[str, Any]]) -> None:
+def _statement(site: dict, ledger: list[tuple[str, Any]], reel: str) -> None:
     portrait = img_src(site.get("portrait", ""))
     right = (
         f'<div class="hv-portrait hv-rise"><img src="{portrait}" alt="Portrait of {attr(site.get("name"))}"></div>'
@@ -210,7 +210,7 @@ def _statement(site: dict, ledger: list[tuple[str, Any]]) -> None:
     )
     _md(
         _open(
-            "01",
+            reel,
             [("Sec", "Statement"), ("Base", site.get("location") or "—")],
             _title(site["section_titles"]["statement"]),
             "about",
@@ -330,12 +330,12 @@ def _modal(p: dict, idx: int) -> str:
 </div>"""
 
 
-def _work(site: dict, projects: list[dict]) -> None:
+def _work(site: dict, projects: list[dict], reel: str) -> None:
     items = D.sorted_projects(projects)
     years = [str(p.get("year")) for p in items if p.get("year")]
     span = f"{min(years)}–{max(years)}" if years else "—"
     head = _open(
-        "02",
+        reel,
         [("Sec", "Work"), ("Titles", str(len(items))), ("Span", span)],
         _title(site["section_titles"]["work"]),
         "work",
@@ -385,12 +385,12 @@ def _work(site: dict, projects: list[dict]) -> None:
 
 
 # --------------------------------------------------------------------------
-def _showreel(site: dict) -> None:
+def _showreel(site: dict, reel: str) -> None:
     body = _video_block(
         site.get("showreel_file", ""), site.get("showreel_url", ""), "", "Showreel"
     )
     _md(
-        _open("03", [("Sec", "Reel"), ("Ratio", "16:9")], _title(site["section_titles"]["showreel"]), "reel")
+        _open(reel, [("Sec", "Reel"), ("Ratio", "16:9")], _title(site["section_titles"]["showreel"]), "reel")
         + body
         + (f'<p class="hv-muted" style="margin-top:14px">{esc(site.get("showreel_caption"))}</p>'
            if site.get("showreel_caption") else "")
@@ -398,8 +398,8 @@ def _showreel(site: dict) -> None:
     )
 
 
-def _timeline(site: dict, items: list[dict]) -> None:
-    head = _open("04", [("Sec", "Journey"), ("Entries", str(len(items)))],
+def _timeline(site: dict, items: list[dict], reel: str) -> None:
+    head = _open(reel, [("Sec", "Journey"), ("Entries", str(len(items)))],
                  _title(site["section_titles"]["timeline"]), "journey")
     if not items:
         _md(head + '<div class="hv-empty-state">Milestones appear here.</div>' + _CLOSE)
@@ -414,8 +414,8 @@ def _timeline(site: dict, items: list[dict]) -> None:
     _md(head + f'<div class="hv-tl">{body}</div>' + _CLOSE)
 
 
-def _gallery(site: dict, items: list[dict]) -> None:
-    head = _open("05", [("Sec", "Stills"), ("Frames", str(len(items)))],
+def _gallery(site: dict, items: list[dict], reel: str) -> None:
+    head = _open(reel, [("Sec", "Stills"), ("Frames", str(len(items)))],
                  _title(site["section_titles"]["gallery"]), "stills")
     figs = []
     for g in items:
@@ -430,8 +430,8 @@ def _gallery(site: dict, items: list[dict]) -> None:
     _md(head + f'<div class="hv-gal hv-rise">{"".join(figs)}</div>' + _CLOSE)
 
 
-def _press(site: dict, items: list[dict]) -> None:
-    head = _open("06", [("Sec", "Press"), ("Items", str(len(items)))],
+def _press(site: dict, items: list[dict], reel: str) -> None:
+    head = _open(reel, [("Sec", "Press"), ("Items", str(len(items)))],
                  _title(site["section_titles"]["press"]), "press")
     if not items:
         _md(head + '<div class="hv-empty-state">Recognition appears here.</div>' + _CLOSE)
@@ -446,10 +446,10 @@ def _press(site: dict, items: list[dict]) -> None:
 
 
 # --------------------------------------------------------------------------
-def _guestbook(site: dict, messages: list[dict]) -> None:
+def _guestbook(site: dict, messages: list[dict], reel: str) -> None:
     shown = [m for m in messages if m.get("approved")]
     _md(
-        _open("07", [("Sec", "Guestbook"), ("Notes", str(len(shown))), ("Login", "Not required")],
+        _open(reel, [("Sec", "Guestbook"), ("Notes", str(len(shown))), ("Login", "Not required")],
               _title(site["section_titles"]["guestbook"]), "guestbook")
         + '<p class="hv-p hv-rise">No account, no login. Leave a note, a question or an idea '
         "&mdash; it goes straight to the director.</p>"
@@ -507,7 +507,7 @@ def _guestbook(site: dict, messages: list[dict]) -> None:
         _md('<div style="padding-bottom:clamp(62px,9vw,132px)"></div></section>')
 
 
-def _contact(site: dict) -> None:
+def _contact(site: dict, reel: str) -> None:
     email = str(site.get("email") or "").strip()
     mail = safe_url("mailto:" + email) if email else ""
     cta = (
@@ -524,7 +524,7 @@ def _contact(site: dict) -> None:
         links.append(f'<a href="{attr(p)}">{esc(site["phone"])}</a>')
 
     _md(
-        _open("08", [("Sec", "Contact"), ("Reply", "Usually same week")], "Let's make <em>something</em>", "contact")
+        _open(reel, [("Sec", "Contact"), ("Reply", "Usually same week")], "Let's make <em>something</em>", "contact")
         + f'<div class="hv-rise">{cta}</div><div class="hv-links hv-rise">{"".join(links)}</div>'
         + _CLOSE
         + f"""
@@ -575,6 +575,11 @@ def render(content: dict[str, Any]) -> None:
     site = content["site"]
     sec = site.get("sections", {})
     published = [p for p in content["projects"] if p.get("published", True)]
+    stills = [g for g in content["gallery"] if img_src(g.get("url", ""))]
+    notes = [m for m in content["messages"] if m.get("approved")]
+    has_reel = bool(
+        embed_src(site.get("showreel_file", ""))[0] or embed_src(site.get("showreel_url", ""))[0]
+    )
 
     _hero(site)
     _marquee(site)
@@ -583,22 +588,38 @@ def render(content: dict[str, Any]) -> None:
         ("Titles directed", len(published)),
         ("Formats worked in", len({p.get("category") for p in published if p.get("category")})),
         ("Milestones logged", len(content["timeline"])),
-        ("Frames published", len(content["gallery"])),
+        ("Frames published", len(stills)),
+    ]
+    # Only show the ledger rows that actually count something.
+    ledger = [(k, v) for k, v in ledger if v]
+
+    # A section appears only when it has something to say. An empty one is
+    # hidden outright rather than showing a placeholder, and the reel numbers
+    # stay sequential so there are never gaps.
+    plan = [
+        (sec.get("statement", True) and bool(
+            str(site.get("statement") or "").strip()
+            or str(site.get("bio") or "").strip()
+            or img_src(site.get("portrait", ""))
+        ), lambda r: _statement(site, ledger, r)),
+        (sec.get("work", True) and bool(published),
+         lambda r: _work(site, content["projects"], r)),
+        (sec.get("showreel", True) and has_reel, lambda r: _showreel(site, r)),
+        (sec.get("timeline", True) and bool(content["timeline"]),
+         lambda r: _timeline(site, content["timeline"], r)),
+        (sec.get("gallery", True) and bool(stills), lambda r: _gallery(site, stills, r)),
+        (sec.get("press", True) and bool(content["press"]),
+         lambda r: _press(site, content["press"], r)),
+        (sec.get("guestbook", True) and (site.get("guestbook_open", True) or bool(notes)),
+         lambda r: _guestbook(site, content["messages"], r)),
+        (True, lambda r: _contact(site, r)),
     ]
 
-    if sec.get("statement", True):
-        _statement(site, ledger)
-    if sec.get("work", True):
-        _work(site, content["projects"])
-    if sec.get("showreel", True):
-        _showreel(site)
-    if sec.get("timeline", True):
-        _timeline(site, content["timeline"])
-    if sec.get("gallery", True):
-        _gallery(site, content["gallery"])
-    if sec.get("press", True):
-        _press(site, content["press"])
-    if sec.get("guestbook", True):
-        _guestbook(site, content["messages"])
-    _contact(site)
+    reel = 0
+    for show, draw in plan:
+        if not show:
+            continue
+        reel += 1
+        draw(f"{reel:02d}")
+
     _enhance()
