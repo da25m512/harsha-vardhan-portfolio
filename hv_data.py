@@ -149,6 +149,18 @@ def get_store() -> Store:
     return _build_store(*_github_secrets())
 
 
+def reset_store() -> None:
+    """Drop the cached backend so the next call re-reads the secrets.
+
+    Streamlit keeps a cached resource for the life of the app process, so an
+    app that booted before its secrets were saved would otherwise keep using
+    temporary storage until someone rebooted it."""
+    fn = getattr(_build_store, "clear", None)
+    if callable(fn):
+        fn()
+    clear_cache()
+
+
 def storage_diagnosis() -> list[str]:
     """Plain-language reasons the GitHub backend is not in use."""
     token, owner, repo, _ = _github_secrets()

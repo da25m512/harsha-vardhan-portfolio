@@ -147,16 +147,26 @@ def _tab_overview(c: dict) -> None:
     )
     if not isinstance(store, GitHubStore):
         why = D.storage_diagnosis()
-        detail = ("\n\nIn the app's Secrets: " + "; ".join(why) + ".") if why else (
-            "\n\nThe `[github]` section is missing from the app's Secrets."
-        )
-        st.warning(
-            "Running without GitHub storage — anything saved now is **lost when the app "
-            "restarts**." + detail
-            + "\n\nOpen **Manage app → Settings → Secrets**, check the values, and save. "
-            "The change takes about a minute.",
-            icon="⚠️",
-        )
+        if why:
+            st.warning(
+                "Running on temporary storage — anything saved now is **lost when the "
+                "app restarts**.\n\nIn the app's Secrets: " + "; ".join(why) + "."
+                "\n\nOpen **Manage app → Settings → Secrets**, fix that, and save. "
+                "The change takes about a minute.",
+                icon="⚠️",
+            )
+        else:
+            # The secrets are complete, so the app simply started before they
+            # were saved and cached the temporary backend.
+            st.warning(
+                "Your GitHub secrets look complete, but this app started **before** "
+                "they were saved, so it is still holding the temporary storage it "
+                "picked up at boot. Reconnect to pick them up — no reboot needed.",
+                icon="🔌",
+            )
+            if st.button("🔌 Reconnect storage", type="primary"):
+                D.reset_store()
+                st.rerun()
     elif not ok:
         st.error(msg, icon="🚫")
 
@@ -175,11 +185,15 @@ def _tab_overview(c: dict) -> None:
         col.metric(k, v)
 
     st.divider()
-    a, b = st.columns(2)
-    if a.button("↻ Refresh content from storage", use_container_width=True):
+    a, b, c = st.columns(3)
+    if a.button("↻ Refresh content", use_container_width=True):
         D.bump()
         st.rerun()
-    b.link_button("View the public site ↗", "?", use_container_width=True)
+    if b.button("🔌 Reconnect storage", use_container_width=True,
+                help="Re-reads the app's secrets and rebuilds the GitHub connection."):
+        D.reset_store()
+        st.rerun()
+    c.link_button("View the public site ↗", "?", use_container_width=True)
 
     st.caption(f"Last saved: {c['site'].get('updated_at') or 'never'}")
 
