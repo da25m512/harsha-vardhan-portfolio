@@ -83,7 +83,7 @@ def login_gate() -> bool:
                 st.rerun()
             else:
                 st.error(err, icon="🚫")
-        st.link_button("← Back to the site", "?", use_container_width=False)
+        st.link_button("← Back to the site", "?", width="content")
     return False
 
 
@@ -185,15 +185,15 @@ def _tab_overview(c: dict) -> None:
         col.metric(k, v)
 
     st.divider()
-    a, b, c = st.columns(3)
-    if a.button("↻ Refresh content", use_container_width=True):
+    col_a, col_b, col_c = st.columns(3)
+    if col_a.button("↻ Refresh content", width="stretch"):
         D.bump()
         st.rerun()
-    if b.button("🔌 Reconnect storage", use_container_width=True,
-                help="Re-reads the app's secrets and rebuilds the GitHub connection."):
+    if col_b.button("🔌 Reconnect storage", width="stretch",
+                    help="Re-reads the app's secrets and rebuilds the GitHub connection."):
         D.reset_store()
         st.rerun()
-    c.link_button("View the public site ↗", "?", use_container_width=True)
+    col_c.link_button("View the public site ↗", "?", width="stretch")
 
     st.caption(f"Last saved: {c['site'].get('updated_at') or 'never'}")
 
@@ -296,7 +296,7 @@ def _tab_profile(c: dict) -> None:
     s["showreel_caption"] = st.text_input("Caption under the reel", s.get("showreel_caption", ""))
 
     st.divider()
-    if st.button("💾 Save profile", type="primary", use_container_width=True):
+    if st.button("💾 Save profile", type="primary", width="stretch"):
         if _guarded(lambda: D.save_site(s)):
             st.rerun()
 
@@ -385,13 +385,13 @@ def _tab_projects(c: dict) -> None:
 
     st.divider()
     a, b = st.columns([3, 1])
-    if a.button("💾 Save project", type="primary", use_container_width=True):
+    if a.button("💾 Save project", type="primary", width="stretch"):
         if not p.get("title", "").strip():
             st.error("Give the project a title first.", icon="🚫")
         elif _guarded(lambda: _persist_projects(projects, idx, p)):
             st.rerun()
     if idx >= 0:
-        if b.button("🗑 Delete", use_container_width=True):
+        if b.button("🗑 Delete", width="stretch"):
             if st.session_state.get(f"confirm_del_{idx}"):
                 projects.pop(idx)
                 if _guarded(lambda: D.save(D.PROJECTS_PATH, projects, "delete project"),
@@ -462,11 +462,11 @@ def _simple_list(
                     if u:
                         edited[fkey] = u
             a, b = st.columns([3, 1])
-            if a.button("Save", key=f"s_{key}_{i}", type="primary", use_container_width=True):
+            if a.button("Save", key=f"s_{key}_{i}", type="primary", width="stretch"):
                 items[i] = edited
                 if _guarded(lambda: D.save(path, items, f"edit {title}")):
                     st.rerun()
-            if b.button("Delete", key=f"d_{key}_{i}", use_container_width=True):
+            if b.button("Delete", key=f"d_{key}_{i}", width="stretch"):
                 items.pop(i)
                 if _guarded(lambda: D.save(path, items, f"delete {title}"), f"{title} deleted."):
                     st.rerun()
@@ -495,17 +495,17 @@ def _tab_messages(c: dict) -> None:
             st.write(m.get("message", ""))
             a, b = st.columns(2)
             if not appr:
-                if a.button("✓ Approve", key=f"ap{i}", type="primary", use_container_width=True):
+                if a.button("✓ Approve", key=f"ap{i}", type="primary", width="stretch"):
                     msgs[i]["approved"] = True
                     if _guarded(lambda: D.save(D.MESSAGES_PATH, msgs, "approve message"),
                                 "Published."):
                         st.rerun()
             else:
-                if a.button("Hide", key=f"hd{i}", use_container_width=True):
+                if a.button("Hide", key=f"hd{i}", width="stretch"):
                     msgs[i]["approved"] = False
                     if _guarded(lambda: D.save(D.MESSAGES_PATH, msgs, "hide message"), "Hidden."):
                         st.rerun()
-            if b.button("🗑 Delete", key=f"dm{i}", use_container_width=True):
+            if b.button("🗑 Delete", key=f"dm{i}", width="stretch"):
                 msgs.pop(i)
                 if _guarded(lambda: D.save(D.MESSAGES_PATH, msgs, "delete message"), "Deleted."):
                     st.rerun()
@@ -544,7 +544,7 @@ def _tab_appearance(c: dict) -> None:
     s["footer_note"] = st.text_input("Footer note", s.get("footer_note", ""))
 
     st.divider()
-    if st.button("💾 Save appearance", type="primary", use_container_width=True):
+    if st.button("💾 Save appearance", type="primary", width="stretch"):
         if _guarded(lambda: D.save_site(s)):
             st.rerun()
 
@@ -554,7 +554,7 @@ def _tab_appearance(c: dict) -> None:
         data=json.dumps(c, indent=2, ensure_ascii=False),
         file_name="portfolio-backup.json",
         mime="application/json",
-        use_container_width=True,
+        width="stretch",
     )
 
 
@@ -570,10 +570,10 @@ def render(content: dict) -> None:
     )
     with st.container(key="hv_admin"):
         top = st.columns([1, 1, 6])
-        if top[0].button("← Public site", use_container_width=True):
+        if top[0].button("← Public site", width="stretch"):
             st.query_params.clear()
             st.rerun()
-        if top[1].button("Log out", use_container_width=True):
+        if top[1].button("Log out", width="stretch"):
             logout()
             st.query_params.clear()
             st.rerun()
