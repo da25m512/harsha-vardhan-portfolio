@@ -19,7 +19,26 @@ from hv_security import (
     safe_url,
     validate_upload,
 )
-from hv_store import GitHubStore
+from hv_store import GitHubStore, StoreError
+
+
+def _guarded(action, ok_message: str = "Saved.") -> bool:
+    """Run a save and turn any storage failure into a readable message
+    instead of a redacted crash screen."""
+    try:
+        action()
+    except StoreError as exc:
+        st.error(str(exc), icon="🚫")
+        return False
+    except Exception as exc:  # network, JSON, anything unexpected
+        st.error(
+            f"Couldn't save: {type(exc).__name__}. Check the Overview tab for the "
+            "storage status, then try again.",
+            icon="🚫",
+        )
+        return False
+    st.success(ok_message, icon="✅")
+    return True
 
 
 def _md(html: str) -> None:
@@ -127,9 +146,15 @@ def _tab_overview(c: dict) -> None:
         f'<span class="hv-pill">Storage: {esc(kind)}</span></div>'
     )
     if not isinstance(store, GitHubStore):
+        why = D.storage_diagnosis()
+        detail = ("\n\nIn the app's Secrets: " + "; ".join(why) + ".") if why else (
+            "\n\nThe `[github]` section is missing from the app's Secrets."
+        )
         st.warning(
-            "Running without GitHub storage. Anything you save now will be **lost when the "
-            "app restarts**. Add the `[github]` secrets to make it permanent.",
+            "Running without GitHub storage — anything saved now is **lost when the app "
+            "restarts**." + detail
+            + "\n\nOpen **Manage app → Settings → Secrets**, check the values, and save. "
+            "The change takes about a minute.",
             icon="⚠️",
         )
     elif not ok:
@@ -250,12 +275,8 @@ def _tab_profile(c: dict) -> None:
 
     st.divider()
     if st.button("💾 Save profile", type="primary", use_container_width=True):
-        try:
-            D.save_site(s)
-            st.success("Saved.", icon="✅")
+        if _guarded(lambda: D.save_site(s)):
             st.rerun()
-        except Exception as exc:
-            st.error(f"Save failed: {exc}", icon="🚫")
 
 
 # --------------------------------------------------------------------------
@@ -316,8 +337,8 @@ def _tab_projects(c: dict) -> None:
                 if st.button("Remove", key=f"rmg{idx}_{i}"):
                     gal.pop(i)
                     p["gallery"] = gal
-                    _persist_projects(projects, idx, p)
-                    st.rerun()
+                    if _guarded(lambda: _persist_projects(projects, idx, p), "Still removed."):
+                        st.rerun()
     u = _upload("Add a still", "projects", "image", f"up_gal_{idx}")
     if u:
         gal.append(u)
@@ -328,17 +349,16 @@ def _tab_projects(c: dict) -> None:
     if a.button("💾 Save project", type="primary", use_container_width=True):
         if not p.get("title", "").strip():
             st.error("Give the project a title first.", icon="🚫")
-        else:
-            _persist_projects(projects, idx, p)
-            st.success("Saved.", icon="✅")
+        elif _guarded(lambda: _persist_projects(projects, idx, p)):
             st.rerun()
     if idx >= 0:
         if b.button("🗑 Delete", use_container_width=True):
             if st.session_state.get(f"confirm_del_{idx}"):
                 projects.pop(idx)
-                D.save(D.PROJECTS_PATH, projects, "delete project")
-                st.session_state.pop(f"confirm_del_{idx}", None)
-                st.rerun()
+                if _guarded(lambda: D.save(D.PROJECTS_PATH, projects, "delete project"),
+                            "Project deleted."):
+                    st.session_state.pop(f"confirm_del_{idx}", None)
+                    st.rerun()
             else:
                 st.session_state[f"confirm_del_{idx}"] = True
                 st.warning("Press Delete once more to confirm.", icon="⚠️")
@@ -381,7 +401,8 @@ def _simple_list(
             else:
                 new["id"] = D.new_id()
                 items.append(new)
-                D.save(path, items, f"add {title}")
+                if not _guarded(lambda: D.save(path, items, f"add {title}"), f"{title} added."):
+                    return
                 for fk, _l, ft in fields:
                     st.session_state.pop(f"n_{key}_{fk}", None)
                     st.session_state.pop(f"_up_done_n_{key}_{fk}_up", None)
@@ -404,12 +425,12 @@ def _simple_list(
             a, b = st.columns([3, 1])
             if a.button("Save", key=f"s_{key}_{i}", type="primary", use_container_width=True):
                 items[i] = edited
-                D.save(path, items, f"edit {title}")
-                st.rerun()
+                if _guarded(lambda: D.save(path, items, f"edit {title}")):
+                    st.rerun()
             if b.button("Delete", key=f"d_{key}_{i}", use_container_width=True):
                 items.pop(i)
-                D.save(path, items, f"delete {title}")
-                st.rerun()
+                if _guarded(lambda: D.save(path, items, f"delete {title}"), f"{title} deleted."):
+                    st.rerun()
 
 
 # --------------------------------------------------------------------------
@@ -437,17 +458,18 @@ def _tab_messages(c: dict) -> None:
             if not appr:
                 if a.button("✓ Approve", key=f"ap{i}", type="primary", use_container_width=True):
                     msgs[i]["approved"] = True
-                    D.save(D.MESSAGES_PATH, msgs, "approve message")
-                    st.rerun()
+                    if _guarded(lambda: D.save(D.MESSAGES_PATH, msgs, "approve message"),
+                                "Published."):
+                        st.rerun()
             else:
                 if a.button("Hide", key=f"hd{i}", use_container_width=True):
                     msgs[i]["approved"] = False
-                    D.save(D.MESSAGES_PATH, msgs, "hide message")
-                    st.rerun()
+                    if _guarded(lambda: D.save(D.MESSAGES_PATH, msgs, "hide message"), "Hidden."):
+                        st.rerun()
             if b.button("🗑 Delete", key=f"dm{i}", use_container_width=True):
                 msgs.pop(i)
-                D.save(D.MESSAGES_PATH, msgs, "delete message")
-                st.rerun()
+                if _guarded(lambda: D.save(D.MESSAGES_PATH, msgs, "delete message"), "Deleted."):
+                    st.rerun()
 
 
 # --------------------------------------------------------------------------
@@ -484,9 +506,8 @@ def _tab_appearance(c: dict) -> None:
 
     st.divider()
     if st.button("💾 Save appearance", type="primary", use_container_width=True):
-        D.save_site(s)
-        st.success("Saved.", icon="✅")
-        st.rerun()
+        if _guarded(lambda: D.save_site(s)):
+            st.rerun()
 
     st.subheader("Backup")
     st.download_button(

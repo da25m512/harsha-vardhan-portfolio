@@ -122,19 +122,44 @@ def now_stamp() -> str:
 # Store wiring
 # --------------------------------------------------------------------------
 @st.cache_resource(show_spinner=False)
-def get_store() -> Store:
-    gh = {}
+def _build_store(token: str, owner: str, repo: str, branch: str) -> Store:
+    """Cached on its arguments, so editing the app's secrets swaps the
+    backend on the next rerun instead of needing a reboot."""
+    if token and owner and repo:
+        return GitHubStore(token, owner, repo, branch)
+    return LocalStore()
+
+
+def _github_secrets() -> tuple[str, str, str, str]:
     try:
         gh = dict(st.secrets.get("github", {}))
     except Exception:
         gh = {}
-    token = gh.get("token", "")
-    owner = gh.get("owner", "")
-    repo = gh.get("repo", "")
-    branch = gh.get("branch", "content") or "content"
-    if token and owner and repo:
-        return GitHubStore(token, owner, repo, branch)
-    return LocalStore()
+    return (
+        str(gh.get("token", "") or "").strip(),
+        str(gh.get("owner", "") or "").strip(),
+        str(gh.get("repo", "") or "").strip(),
+        str(gh.get("branch", "") or "content").strip() or "content",
+    )
+
+
+def get_store() -> Store:
+    return _build_store(*_github_secrets())
+
+
+def storage_diagnosis() -> list[str]:
+    """Plain-language reasons the GitHub backend is not in use."""
+    token, owner, repo, _ = _github_secrets()
+    missing = []
+    if not token:
+        missing.append("`token` is empty")
+    elif not (token.startswith("github_pat_") or token.startswith("ghp_")):
+        missing.append("`token` doesn't look like a GitHub token (should start with `github_pat_`)")
+    if not owner:
+        missing.append("`owner` is empty")
+    if not repo:
+        missing.append("`repo` is empty")
+    return missing
 
 
 def store_status() -> tuple[bool, str]:

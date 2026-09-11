@@ -115,6 +115,12 @@ class GitHubStore(Store):
             json={"ref": f"refs/heads/{self.branch}", "sha": sha},
             timeout=TIMEOUT,
         )
+        if made.status_code == 403:
+            raise StoreError(
+                f"The token cannot create the `{self.branch}` branch (403). Either set "
+                "its **Contents** permission to **Read and write**, or create a branch "
+                f"named `{self.branch}` by hand in GitHub — the app will use it."
+            )
         if made.status_code not in (200, 201, 422):
             raise StoreError(f"Could not create branch: {made.status_code} {made.text[:200]}")
         self._branch_ready = True
@@ -138,7 +144,44 @@ class GitHubStore(Store):
         perms = r.json().get("permissions") or {}
         if not perms.get("push", False):
             return False, "Token can read the repo but has no write access."
+
+        # `permissions.push` reflects the account, not the token's own scope,
+        # so probe the branch the app actually writes to.
+        br = self._session.get(
+            f"{API}/repos/{self.owner}/{self.repo}/branches/{self.branch}",
+            timeout=TIMEOUT,
+        )
+        if br.status_code == 404:
+            made = self._session.post(
+                f"{API}/repos/{self.owner}/{self.repo}/git/refs",
+                json={"ref": f"refs/heads/{self.branch}", "sha": self._default_sha()},
+                timeout=TIMEOUT,
+            )
+            if made.status_code == 403:
+                return False, (
+                    f"The token cannot create the `{self.branch}` branch "
+                    "(GitHub said 403). Set the token's **Contents** permission to "
+                    "**Read and write**, or create the branch by hand in GitHub."
+                )
+            if made.status_code not in (200, 201, 422):
+                return False, f"Could not create the `{self.branch}` branch: {made.status_code}"
+        elif br.status_code == 403:
+            return False, (
+                "The token cannot read this repository's branches. Check that it is "
+                "scoped to this repo with **Contents: Read and write**."
+            )
+        self._branch_ready = True
         return True, f"Connected to {self.owner}/{self.repo}@{self.branch}"
+
+    def _default_sha(self) -> str:
+        repo = self._session.get(f"{API}/repos/{self.owner}/{self.repo}", timeout=TIMEOUT)
+        repo.raise_for_status()
+        base = repo.json()["default_branch"]
+        ref = self._session.get(
+            f"{API}/repos/{self.owner}/{self.repo}/git/ref/heads/{base}", timeout=TIMEOUT
+        )
+        ref.raise_for_status()
+        return ref.json()["object"]["sha"]
 
     # -- reads -------------------------------------------------------------
     def read_json(self, path: str, default: Any) -> Any:
@@ -189,6 +232,18 @@ class GitHubStore(Store):
             if r.status_code in (200, 201):
                 return r.json()
             last = f"{r.status_code} {r.text[:240]}"
+            if r.status_code == 403:
+                raise StoreError(
+                    "GitHub refused the save (403). The access token's "
+                    "**Contents** permission needs to be **Read and write** for this "
+                    "repository. Fix it at Settings -> Developer settings -> "
+                    "Fine-grained tokens, then update the app's Secrets."
+                )
+            if r.status_code == 401:
+                raise StoreError(
+                    "GitHub rejected the access token (401). It may have expired — "
+                    "generate a new one and update the app's Secrets."
+                )
             if r.status_code not in (409, 422):
                 break
             time.sleep(0.6 * (attempt + 1))
