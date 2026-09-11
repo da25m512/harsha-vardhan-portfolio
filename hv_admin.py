@@ -271,6 +271,14 @@ def _tab_profile(c: dict) -> None:
 
         if not embed_src(s["showreel_url"])[0]:
             st.warning("That link isn't a recognised YouTube or Vimeo video.", icon="⚠️")
+    st.caption("Or upload the reel directly (up to 20 MB). An uploaded file wins over the link.")
+    if s.get("showreel_file"):
+        _preview(s["showreel_file"], "video")
+    u = _upload("Upload showreel video", "showreel", "video", "up_reel")
+    if u:
+        s["showreel_file"] = u
+    if s.get("showreel_file") and st.button("Remove uploaded reel", key="rm_reel"):
+        s["showreel_file"] = ""
     s["showreel_caption"] = st.text_input("Caption under the reel", s.get("showreel_caption", ""))
 
     st.divider()
@@ -312,8 +320,25 @@ def _tab_projects(c: dict) -> None:
     p["synopsis"] = st.text_area("Synopsis", p.get("synopsis", ""), height=140)
     p["credits"] = st.text_area("Credits (one per line)", p.get("credits", ""), height=110)
     a, b = st.columns(2)
-    p["video_url"] = a.text_input("YouTube / Vimeo link", p.get("video_url", ""))
+    p["video_url"] = a.text_input(
+        "YouTube / Vimeo link", p.get("video_url", ""),
+        help="Best for anything longer than a minute or two.",
+    )
     p["link"] = b.text_input("External link (optional)", p.get("link", ""))
+
+    st.markdown("**Video file for this project**")
+    st.caption(
+        "Upload a clip directly (MP4, WebM or MOV, up to 20 MB). An uploaded file "
+        "plays instead of the link above. For anything longer, put it on YouTube or "
+        "Vimeo and paste the link — there is no size limit that way."
+    )
+    if p.get("video_file"):
+        _preview(p["video_file"], "video")
+    u = _upload("Upload a video", "projects", "video", f"up_vid_{idx}")
+    if u:
+        p["video_file"] = u
+    if p.get("video_file") and st.button("Remove uploaded video", key=f"rmv{idx}"):
+        p["video_file"] = ""
     p["tags"] = [t.strip() for t in st.text_input("Tags (comma separated)", ", ".join(p.get("tags") or [])).split(",") if t.strip()]
     a, b = st.columns(2)
     p["featured"] = a.toggle("Feature it (wide card)", value=bool(p.get("featured")))

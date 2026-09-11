@@ -77,6 +77,16 @@ EXTRA = """
 }
 .hv-tag:hover { border-color:var(--accent); color:var(--accent); }
 
+/* ---------- play badge on cards that carry a video ---------- */
+.hv-play {
+  position:absolute; left:22px; top:9px; z-index:3;
+  width:26px; height:26px; display:grid; place-items:center;
+  font-size:9px; color:var(--ink); background:var(--accent);
+  border-radius:50%; padding-left:2px;
+  transition: transform .4s cubic-bezier(.16,1,.3,1);
+}
+.hv-card:hover .hv-play { transform: scale(1.18); }
+
 /* ---------- video fallback link (sits behind the embed) ---------- */
 .hv-video-fallback {
   position:absolute; inset:0; z-index:0; display:grid; place-items:center;

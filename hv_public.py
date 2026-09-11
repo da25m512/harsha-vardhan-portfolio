@@ -31,21 +31,28 @@ def _watch_url(url: str) -> str:
     return u
 
 
-def _video_block(url: str, extra_style: str = "", label: str = "Play") -> str:
+def _video_block(
+    file_url: str = "", link_url: str = "", extra_style: str = "", label: str = "Play"
+) -> str:
     """Render a video frame.
 
-    A plain link sits underneath the embed. If the embed renders, it covers
-    the link; if a sanitiser ever removes the iframe, the viewer still has a
-    working way to watch. Only YouTube and Vimeo are embedded.
+    An uploaded file wins over a link, since uploading is the more deliberate
+    act. A plain link sits underneath the embed: if the embed renders it
+    covers the link, and if a sanitiser ever removes the iframe the viewer
+    still has a working way to watch. Only YouTube and Vimeo are embedded.
     """
-    kind, src = embed_src(url)
-    watch = _watch_url(url)
-    fallback = (
-        f'<a class="hv-video-fallback" href="{attr(watch)}" target="_blank" '
-        f'rel="noopener noreferrer">Watch on {"Vimeo" if "vimeo" in watch else "YouTube"} &#8599;</a>'
-        if watch and kind
-        else '<div class="hv-video-empty">Reel in assembly</div>'
-    )
+    kind, src = embed_src(file_url or link_url)
+    if not kind and file_url and link_url:
+        kind, src = embed_src(link_url)
+    watch = _watch_url(link_url or file_url)
+    if watch and kind:
+        where = "Vimeo" if "vimeo" in watch else ("YouTube" if "yout" in watch else "the file")
+        fallback = (
+            f'<a class="hv-video-fallback" href="{attr(watch)}" target="_blank" '
+            f'rel="noopener noreferrer">Watch on {where} &#8599;</a>'
+        )
+    else:
+        fallback = '<div class="hv-video-empty">Reel in assembly</div>' 
     if kind == "iframe":
         inner = (
             f'<iframe src="{attr(src)}" title="{attr(label)}" '
@@ -253,6 +260,10 @@ def _card(p: dict, idx: int) -> str:
         else ""
     )
     log = f'<div class="hv-card-log">{esc(p.get("logline"))}</div>' if p.get("logline") else ""
+    playable = bool(
+        embed_src(p.get("video_file", ""))[0] or embed_src(p.get("video_url", ""))[0]
+    )
+    play = '<div class="hv-play" aria-hidden="true">&#9654;</div>' if playable else ""
     return f"""
 <a class="hv-card{' wide' if p.get('featured') else ''} hv-rise" data-cat="{attr(_slug(p.get('category') or 'other'))}"
    href="#p-{pid}" aria-label="Open {attr(p.get('title'))}">
@@ -260,6 +271,7 @@ def _card(p: dict, idx: int) -> str:
     <div class="hv-sprocket" aria-hidden="true"></div>
     {frame}
     <div class="hv-slateno">SL {idx:02d}</div>
+    {play}
     {flag}
   </div>
   <div class="hv-card-body">
@@ -283,9 +295,13 @@ def _modal(p: dict, idx: int) -> str:
         )
         if v
     )
+    has_video = embed_src(p.get("video_file", ""))[0] or embed_src(p.get("video_url", ""))[0]
     video = (
-        _video_block(p.get("video_url", ""), "margin-top:24px", str(p.get("title") or "Project video"))
-        if embed_src(p.get("video_url", ""))[0]
+        _video_block(
+            p.get("video_file", ""), p.get("video_url", ""),
+            "margin-top:24px", str(p.get("title") or "Project video"),
+        )
+        if has_video
         else ""
     )
     gal = "".join(
@@ -370,7 +386,9 @@ def _work(site: dict, projects: list[dict]) -> None:
 
 # --------------------------------------------------------------------------
 def _showreel(site: dict) -> None:
-    body = _video_block(site.get("showreel_url", ""), "", "Showreel")
+    body = _video_block(
+        site.get("showreel_file", ""), site.get("showreel_url", ""), "", "Showreel"
+    )
     _md(
         _open("03", [("Sec", "Reel"), ("Ratio", "16:9")], _title(site["section_titles"]["showreel"]), "reel")
         + body
