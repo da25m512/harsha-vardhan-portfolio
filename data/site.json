@@ -28,10 +28,10 @@
     "statement": true,
     "work": true,
     "showreel": true,
-    "timeline": true,
-    "gallery": true,
-    "press": true,
-    "guestbook": true
+    "timeline": false,
+    "gallery": false,
+    "press": false,
+    "guestbook": false
   },
   "section_titles": {
     "statement": "The Idea",
@@ -45,5 +45,5 @@
   "guestbook_open": true,
   "guestbook_moderated": true,
   "footer_note": "Made with intention.",
-  "updated_at": "2026-09-11 19:55"
+  "updated_at": "2026-09-11 20:00"
 }
