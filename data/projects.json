@@ -46,5 +46,28 @@
     "published": true,
     "order": 0,
     "link": ""
+  },
+  {
+    "id": "a7e9a7b5e428",
+    "title": "production intro",
+    "year": "",
+    "category": "Concept / Spec",
+    "role": "3d artist",
+    "status": "Released",
+    "runtime": "",
+    "ratio": "",
+    "shot_on": "",
+    "logline": "",
+    "synopsis": "",
+    "credits": "",
+    "poster": "https://cdn.jsdelivr.net/gh/da25m512/harsha-vardhan-portfolio@content/media/projects/1789122144-00010549.png",
+    "gallery": [],
+    "video_url": "https://youtu.be/ti79j7ujFjk",
+    "video_file": "",
+    "tags": [],
+    "featured": false,
+    "published": true,
+    "order": 0,
+    "link": ""
   }
 ]
