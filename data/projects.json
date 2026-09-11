@@ -67,5 +67,28 @@
     "published": true,
     "order": 0,
     "link": ""
+  },
+  {
+    "id": "de11cca61e3b",
+    "title": "lyrical video",
+    "year": "",
+    "category": "Music Video",
+    "role": "3d artist",
+    "status": "Released",
+    "runtime": "",
+    "ratio": "",
+    "shot_on": "",
+    "logline": "",
+    "synopsis": "",
+    "credits": "",
+    "poster": "",
+    "gallery": [],
+    "video_url": "https://youtu.be/vQdkmy1s2gk?si=FKtS2lQh1rfR6QFG",
+    "video_file": "",
+    "tags": [],
+    "featured": false,
+    "published": true,
+    "order": 0,
+    "link": ""
   }
 ]
