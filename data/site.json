@@ -21,7 +21,7 @@
   "email": "harshamarothu3d@gmail.com",
   "phone": "",
   "socials": [],
-  "accent": "#57C8B0",
+  "accent": "#3de9c1",
   "accent_2": "#E4813F",
   "grain": true,
   "sections": {
@@ -45,5 +45,5 @@
   "guestbook_open": true,
   "guestbook_moderated": true,
   "footer_note": "Made with intention.",
-  "updated_at": "2026-09-11 09:49"
+  "updated_at": "2026-09-11 09:51"
 }
