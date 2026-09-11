@@ -3,7 +3,8 @@
   "short_name": "Harsha Vardhan",
   "eyebrow": "3d artist",
   "roles": [
-    "Visual Thinker"
+    "Visual Thinker",
+    "3d artist"
   ],
   "tagline": "Building a body of work, one frame at a time.",
   "location": "India",
@@ -17,7 +18,7 @@
   "showreel_url": "",
   "showreel_file": "",
   "showreel_caption": "The reel so far",
-  "email": "",
+  "email": "harshamarothu3d@gmail.com",
   "phone": "",
   "socials": [],
   "accent": "#57C8B0",
@@ -44,5 +45,5 @@
   "guestbook_open": true,
   "guestbook_moderated": true,
   "footer_note": "Made with intention.",
-  "updated_at": "2026-09-11 09:32"
+  "updated_at": "2026-09-11 09:34"
 }
