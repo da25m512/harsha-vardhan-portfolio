@@ -37,8 +37,10 @@ def _one_video(url: str, caption: str = "") -> str:
     kind, src = embed_src(url)
     if not kind:
         return ""
-    watch = _watch_url(url)
-    where = "Vimeo" if "vimeo" in watch else ("YouTube" if "yout" in watch else "the file")
+    # Only an embed needs a fallback link: a <video> element survives
+    # sanitisation and always renders, so it never needs one.
+    watch = _watch_url(url) if kind == "iframe" else ""
+    where = "Vimeo" if "vimeo" in watch else "YouTube"
     fallback = (
         f'<a class="hv-video-fallback" href="{attr(watch)}" target="_blank" '
         f'rel="noopener noreferrer">Watch on {where} &#8599;</a>'
