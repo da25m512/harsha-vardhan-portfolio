@@ -25,6 +25,43 @@ from hv_security import (
 )
 
 
+def _watch_url(url: str) -> str:
+    """The original, human-facing watch page for a video link."""
+    u = safe_url(url, allow_mailto=False)
+    return u
+
+
+def _video_block(url: str, extra_style: str = "", label: str = "Play") -> str:
+    """Render a video frame.
+
+    A plain link sits underneath the embed. If the embed renders, it covers
+    the link; if a sanitiser ever removes the iframe, the viewer still has a
+    working way to watch. Only YouTube and Vimeo are embedded.
+    """
+    kind, src = embed_src(url)
+    watch = _watch_url(url)
+    fallback = (
+        f'<a class="hv-video-fallback" href="{attr(watch)}" target="_blank" '
+        f'rel="noopener noreferrer">Watch on {"Vimeo" if "vimeo" in watch else "YouTube"} &#8599;</a>'
+        if watch and kind
+        else '<div class="hv-video-empty">Reel in assembly</div>'
+    )
+    if kind == "iframe":
+        inner = (
+            f'<iframe src="{attr(src)}" title="{attr(label)}" '
+            'allow="accelerometer; autoplay; clipboard-write; encrypted-media; picture-in-picture" '
+            'referrerpolicy="strict-origin-when-cross-origin" allowfullscreen loading="lazy" '
+            'sandbox="allow-scripts allow-same-origin allow-presentation allow-popups"></iframe>'
+        )
+    elif kind == "file":
+        inner = (
+            f'<video src="{attr(src)}" controls preload="metadata" playsinline></video>'
+        )
+    else:
+        inner = ""
+    return f'<div class="hv-video hv-rise" style="{extra_style}">{fallback}{inner}</div>'
+
+
 def _slug(s: str) -> str:
     out = "".join(c.lower() if c.isalnum() else "-" for c in str(s))
     while "--" in out:
@@ -246,21 +283,11 @@ def _modal(p: dict, idx: int) -> str:
         )
         if v
     )
-    kind, src = embed_src(p.get("video_url", ""))
-    if kind == "iframe":
-        video = (
-            f'<div class="hv-video" style="margin-top:24px"><iframe src="{attr(src)}" '
-            'title="Project video" allow="accelerometer; autoplay; clipboard-write; encrypted-media; picture-in-picture" '
-            'referrerpolicy="strict-origin-when-cross-origin" allowfullscreen loading="lazy" '
-            'sandbox="allow-scripts allow-same-origin allow-presentation allow-popups"></iframe></div>'
-        )
-    elif kind == "file":
-        video = (
-            f'<div class="hv-video" style="margin-top:24px"><video src="{attr(src)}" '
-            'controls preload="metadata" playsinline></video></div>'
-        )
-    else:
-        video = ""
+    video = (
+        _video_block(p.get("video_url", ""), "margin-top:24px", str(p.get("title") or "Project video"))
+        if embed_src(p.get("video_url", ""))[0]
+        else ""
+    )
     gal = "".join(
         f'<img src="{img_src(g)}" alt="" loading="lazy">' for g in (p.get("gallery") or []) if img_src(g)
     )
@@ -343,18 +370,7 @@ def _work(site: dict, projects: list[dict]) -> None:
 
 # --------------------------------------------------------------------------
 def _showreel(site: dict) -> None:
-    kind, src = embed_src(site.get("showreel_url", ""))
-    if kind == "iframe":
-        body = (
-            f'<div class="hv-video hv-rise"><iframe src="{attr(src)}" title="Showreel" '
-            'allow="accelerometer; autoplay; clipboard-write; encrypted-media; picture-in-picture" '
-            'referrerpolicy="strict-origin-when-cross-origin" allowfullscreen loading="lazy" '
-            'sandbox="allow-scripts allow-same-origin allow-presentation allow-popups"></iframe></div>'
-        )
-    elif kind == "file":
-        body = f'<div class="hv-video hv-rise"><video src="{attr(src)}" controls preload="metadata" playsinline></video></div>'
-    else:
-        body = '<div class="hv-video hv-rise"><div class="hv-video-empty">Reel in assembly</div></div>'
+    body = _video_block(site.get("showreel_url", ""), "", "Showreel")
     _md(
         _open("03", [("Sec", "Reel"), ("Ratio", "16:9")], _title(site["section_titles"]["showreel"]), "reel")
         + body

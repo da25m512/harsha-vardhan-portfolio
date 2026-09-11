@@ -77,6 +77,17 @@ EXTRA = """
 }
 .hv-tag:hover { border-color:var(--accent); color:var(--accent); }
 
+/* ---------- video fallback link (sits behind the embed) ---------- */
+.hv-video-fallback {
+  position:absolute; inset:0; z-index:0; display:grid; place-items:center;
+  font-family: var(--mono); font-size:10.5px; letter-spacing:.22em;
+  text-transform:uppercase; color:var(--accent); text-decoration:none;
+  background: repeating-linear-gradient(135deg, rgba(233,231,223,.025) 0 1px, transparent 1px 9px);
+  transition: background .3s;
+}
+.hv-video-fallback:hover { background: rgba(87,200,176,.07); }
+.hv-video iframe, .hv-video video { z-index:1; }
+
 /* ---------- cursor spotlight (enhancement only) ---------- */
 #hv-spot {
   position:fixed; width:440px; height:440px; border-radius:50%;
