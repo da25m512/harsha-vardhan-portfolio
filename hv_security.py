@@ -381,3 +381,55 @@ def probe_embed(url: str) -> tuple[str, str]:
             "video hasn't been deleted.",
         )
     return ("unknown", f"The video host answered {r.status_code}; try again shortly.")
+
+
+# --------------------------------------------------------------------------
+# Does this clip actually carry sound?
+# --------------------------------------------------------------------------
+# Plenty of exports -- 3D renders, screen captures, some phone clips -- have
+# no audio track at all, and the only way to find out used to be playing it
+# on the live site. MP4 and MOV share the ISO base media layout, so the track
+# handlers can be read straight out of the file without any media tooling.
+def _iso_boxes(data: bytes, start: int, end: int):
+    i = start
+    while i + 8 <= end:
+        size = int.from_bytes(data[i : i + 4], "big")
+        typ = data[i + 4 : i + 8]
+        hdr = 8
+        if size == 1:
+            if i + 16 > end:
+                return
+            size = int.from_bytes(data[i + 8 : i + 16], "big")
+            hdr = 16
+        elif size == 0:
+            size = end - i
+        if size < hdr or i + size > end:
+            return
+        yield typ, i + hdr, i + size
+        i += size
+
+
+def _handlers(data: bytes, start: int, end: int, depth: int = 0):
+    """Every track handler type found under this box."""
+    if depth > 6:
+        return
+    for typ, bstart, bend in _iso_boxes(data, start, end):
+        if typ == b"hdlr" and bstart + 12 <= bend:
+            yield data[bstart + 8 : bstart + 12]
+        elif typ in (b"moov", b"trak", b"mdia", b"minf", b"stbl", b"mvex"):
+            yield from _handlers(data, bstart, bend, depth + 1)
+
+
+def has_audio_track(blob: bytes) -> bool | None:
+    """True / False for MP4 and MOV, None when we can't tell (e.g. WebM)."""
+    if not blob or len(blob) < 16:
+        return None
+    if blob[4:8] != b"ftyp":
+        return None  # not ISO base media -- don't guess
+    try:
+        handlers = set(_handlers(blob, 0, len(blob)))
+    except Exception:
+        return None
+    if not handlers:
+        return None
+    return b"soun" in handlers

@@ -115,6 +115,9 @@ def _upload(label: str, folder: str, kind: str, key: str) -> str | None:
     try:
         with st.spinner("Uploading…"):
             url = D.upload(folder, f)
+        if kind == "video":
+            from hv_security import has_audio_track
+            st.session_state[f"_audio_{url}"] = has_audio_track(blob)
         st.session_state[f"_up_done_{key}"] = (stamp, url)
         st.success(f"Uploaded {f.name}", icon="✅")
         return url
@@ -456,12 +459,23 @@ def _video_manager(p: dict, projects: list[dict], idx: int) -> None:
     videos = list(p.get("videos") or [])
     persist = _save_project_now(projects, idx, p)
 
+    notice = st.session_state.pop("_silent_notice", None)
+    if notice:
+        st.warning(
+            "That clip has **no audio track** — the file itself is silent, so it will "
+            "play without sound. Re-export it with audio if it should have any.",
+            icon="🔇",
+        )
+
     for i, v in enumerate(videos):
         url = str((v or {}).get("url") or "")
         is_file = (v or {}).get("type") == "file"
         with st.container(border=True):
             head, act = st.columns([5, 1])
-            head.caption(("🎞 Uploaded clip" if is_file else "▶️ Link") + f" · {i + 1}")
+            tag = ("🎞 Uploaded clip" if is_file else "▶️ Link") + f" · {i + 1}"
+            if (v or {}).get("silent"):
+                tag += "  ·  🔇 no audio track"
+            head.caption(tag)
             if is_file:
                 _preview(url, "video")
             else:
@@ -516,13 +530,19 @@ def _video_manager(p: dict, projects: list[dict], idx: int) -> None:
     base = f"up_vid_{idx}"
     got = _upload("Upload a video", "projects", "video", _uploader_key(base))
     if got and not any(str((v or {}).get("url")) == got for v in videos):
-        videos.append({"type": "file", "url": got})
+        entry = {"type": "file", "url": got}
+        audio = st.session_state.get(f"_audio_{got}")
+        if audio is False:
+            entry["silent"] = True
+        videos.append(entry)
         p["videos"] = videos
         _retire_uploader(base)
         if persist:
             _guarded(persist, "Video added.")
         else:
             st.success("Video added.", icon="✅")
+        if audio is False:
+            st.session_state["_silent_notice"] = got
         st.rerun()
 
 
