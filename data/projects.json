@@ -14,6 +14,12 @@
     "credits": "",
     "poster": "https://cdn.jsdelivr.net/gh/da25m512/harsha-vardhan-portfolio@content/media/projects/1789121779-untitled.png",
     "gallery": [],
+    "videos": [
+      {
+        "type": "link",
+        "url": "https://youtu.be/bR0CgAc7ZoA"
+      }
+    ],
     "video_url": "https://youtu.be/bR0CgAc7ZoA",
     "video_file": "",
     "tags": [],
@@ -39,8 +45,14 @@
     "gallery": [
       "https://cdn.jsdelivr.net/gh/da25m512/harsha-vardhan-portfolio@content/media/projects/1789121625-23.png"
     ],
-    "video_url": "https://youtu.be/vQdkmy1s2gk?si=FKtS2lQh1rfR6QFG",
-    "video_file": "https://cdn.jsdelivr.net/gh/da25m512/harsha-vardhan-portfolio@content/media/projects/1789156615-intro0001-0640.mp4",
+    "videos": [
+      {
+        "type": "link",
+        "url": "https://youtu.be/vQdkmy1s2gk?si=FKtS2lQh1rfR6QFG"
+      }
+    ],
+    "video_url": "",
+    "video_file": "",
     "tags": [],
     "featured": true,
     "published": true,
@@ -62,6 +74,12 @@
     "credits": "",
     "poster": "https://cdn.jsdelivr.net/gh/da25m512/harsha-vardhan-portfolio@content/media/projects/1789122144-00010549.png",
     "gallery": [],
+    "videos": [
+      {
+        "type": "link",
+        "url": "https://youtu.be/ti79j7ujFjk"
+      }
+    ],
     "video_url": "https://youtu.be/ti79j7ujFjk",
     "video_file": "",
     "tags": [],
