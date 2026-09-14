@@ -150,15 +150,108 @@ def get_store() -> Store:
     return _build_store(*_github_secrets())
 
 
+# --------------------------------------------------------------------------
+# Private storage
+# --------------------------------------------------------------------------
+# Visitor messages are other people's names and words, so they do not belong
+# in a public repository. Point `[private]` at a private repo and the files
+# listed there are read and written through the API with the token instead of
+# sitting where anyone can read them. Media stays public, because a browser
+# has to be able to fetch it without credentials.
+DEFAULT_PRIVATE_FILES = ("messages",)
+
+_PATH_BY_NAME = {
+    "site": SITE_PATH,
+    "projects": PROJECTS_PATH,
+    "timeline": TIMELINE_PATH,
+    "gallery": GALLERY_PATH,
+    "press": PRESS_PATH,
+    "messages": MESSAGES_PATH,
+}
+
+
+def _private_secrets() -> tuple[str, str, str, str, tuple[str, ...]]:
+    try:
+        pv = dict(st.secrets.get("private", {}))
+    except Exception:
+        pv = {}
+    token, owner, repo, branch = _github_secrets()
+    names = pv.get("files") or DEFAULT_PRIVATE_FILES
+    if isinstance(names, str):
+        names = [n.strip() for n in names.split(",") if n.strip()]
+    return (
+        str(pv.get("token", "") or token).strip(),
+        str(pv.get("owner", "") or owner).strip(),
+        str(pv.get("repo", "") or "").strip(),
+        str(pv.get("branch", "") or "main").strip() or "main",
+        tuple(str(n).strip() for n in names if str(n).strip()),
+    )
+
+
+@st.cache_data(ttl=300, show_spinner=False)
+def _private_reachable(token: str, owner: str, repo: str, branch: str) -> bool:
+    """Can the token actually read and write that private repo?
+
+    Checked before anything is routed there, so a half-finished setup falls
+    back to the public repo instead of silently dropping messages.
+    """
+    if not (token and owner and repo):
+        return False
+    try:
+        ok, _msg = GitHubStore(token, owner, repo, branch).check()
+        return bool(ok)
+    except Exception:
+        return False
+
+
+def private_paths() -> set[str]:
+    """Which data files actually live in the private repo right now."""
+    token, owner, repo, branch, names = _private_secrets()
+    if not _private_reachable(token, owner, repo, branch):
+        return set()
+    return {_PATH_BY_NAME[n] for n in names if n in _PATH_BY_NAME}
+
+
+def get_private_store() -> Store:
+    token, owner, repo, branch, _names = _private_secrets()
+    if _private_reachable(token, owner, repo, branch):
+        return _build_store(token, owner, repo, branch)
+    return get_store()
+
+
+def store_for(path: str) -> Store:
+    """The backend that owns this file."""
+    return get_private_store() if path in private_paths() else get_store()
+
+
+def private_status() -> tuple[bool, str]:
+    token, owner, repo, branch, names = _private_secrets()
+    if not repo:
+        return False, "Not set up — messages are stored in the public repo."
+    if not token:
+        return False, "A private repo is named but no token can reach it."
+    if not _private_reachable(token, owner, repo, branch):
+        try:
+            _ok, why = GitHubStore(token, owner, repo, branch).check()
+        except Exception as exc:
+            why = str(exc)
+        return False, (
+            f"Can't reach {owner}/{repo} — {why} Messages are still going to the "
+            "public repo until this is fixed."
+        )
+    return True, f"{owner}/{repo}@{branch} · holding: {', '.join(names)}"
+
+
 def reset_store() -> None:
     """Drop the cached backend so the next call re-reads the secrets.
 
     Streamlit keeps a cached resource for the life of the app process, so an
     app that booted before its secrets were saved would otherwise keep using
     temporary storage until someone rebooted it."""
-    fn = getattr(_build_store, "clear", None)
-    if callable(fn):
-        fn()
+    for cached in (_build_store, _private_reachable):
+        fn = getattr(cached, "clear", None)
+        if callable(fn):
+            fn()
     clear_cache()
 
 
@@ -204,7 +297,7 @@ def _version() -> int:
 def _fetch(path: str, default_json: str, version: int) -> Any:
     import json
 
-    return get_store().read_json(path, json.loads(default_json))
+    return store_for(path).read_json(path, json.loads(default_json))
 
 
 def load_content() -> dict[str, Any]:
@@ -232,7 +325,7 @@ def load_content() -> dict[str, Any]:
 
 
 def save(path: str, obj: Any, what: str) -> None:
-    get_store().write_json(path, obj, f"content: update {what}")
+    store_for(path).write_json(path, obj, f"content: update {what}")
     bump()
 
 

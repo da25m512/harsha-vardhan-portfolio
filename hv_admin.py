@@ -252,6 +252,12 @@ def _tab_overview(c: dict) -> None:
     elif not ok:
         st.error(msg, icon="🚫")
 
+    ok_p, msg_p = D.private_status()
+    if ok_p:
+        _md(f'<div style="margin-bottom:18px"><span class="hv-pill ok">🔒 Messages private · {esc(msg_p)}</span></div>')
+    else:
+        _md(f'<div style="margin-bottom:18px"><span class="hv-pill warn">🔓 Messages public · {esc(msg_p)}</span></div>')
+
     pending = sum(1 for m in c["messages"] if not m.get("approved"))
     cols = st.columns(5)
     for col, (k, v) in zip(
@@ -655,6 +661,16 @@ def _simple_list(
 
 # --------------------------------------------------------------------------
 def _tab_messages(c: dict) -> None:
+    ok_p, msg_p = D.private_status()
+    if ok_p:
+        st.caption(f"🔒 Stored privately — {msg_p}")
+    else:
+        st.warning(
+            "These messages are stored in your **public** repository, so anyone can "
+            "read the names and text people send you. Add a `[private]` section to the "
+            "app's Secrets pointing at a private repo to move them out of public view.",
+            icon="🔓",
+        )
     msgs = list(c["messages"])
     if not msgs:
         st.info("No messages yet.", icon="📭")
