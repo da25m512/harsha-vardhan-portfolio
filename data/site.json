@@ -31,7 +31,7 @@
     "timeline": false,
     "gallery": false,
     "press": false,
-    "guestbook": false
+    "guestbook": true
   },
   "section_titles": {
     "statement": "The Idea",
@@ -45,5 +45,5 @@
   "guestbook_open": true,
   "guestbook_moderated": true,
   "footer_note": "Made with intention.",
-  "updated_at": "2026-09-14 10:38"
+  "updated_at": "2026-09-14 14:16"
 }
