@@ -703,7 +703,20 @@ def _tab_appearance(c: dict) -> None:
     s["grain"] = cc.toggle("Film grain overlay", value=bool(s.get("grain", True)))
 
     st.subheader("Sections")
-    st.caption("Turn a section off to hide it from the public site, and rename any heading.")
+    st.caption(
+        "Turn a section off to hide it from the public site, and rename any heading. "
+        "A section with nothing in it is hidden automatically, so you only need these "
+        "for hiding something that *does* have content."
+    )
+    WHAT = {
+        "statement": "your statement, bio and portrait",
+        "work": "the project contact sheet — every film you've added",
+        "showreel": "the single reel player",
+        "timeline": "your milestones, year by year",
+        "gallery": "the grid of stills",
+        "press": "quotes, awards and recognition",
+        "guestbook": "**the contact box visitors write messages to you in**",
+    }
     secs = dict(s.get("sections", {}))
     titles = dict(s.get("section_titles", {}))
     for k in D.DEFAULT_SITE["sections"]:
@@ -711,6 +724,15 @@ def _tab_appearance(c: dict) -> None:
         secs[k] = a.toggle(k.title(), value=bool(secs.get(k, True)), key=f"sec_{k}")
         titles[k] = b.text_input(
             f"{k} heading", titles.get(k, ""), key=f"tit_{k}", label_visibility="collapsed"
+        )
+        st.caption(f"↳ {WHAT.get(k, '')}")
+
+    if not secs.get("guestbook", True):
+        st.warning(
+            "**Guestbook is off, so visitors have no way to message you.** That section "
+            "is the contact box on the public site. Turn it back on unless you meant to "
+            "remove it.",
+            icon="✉️",
         )
     s["sections"] = secs
     s["section_titles"] = titles
