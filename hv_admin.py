@@ -299,9 +299,19 @@ def _media_listing(_version: int) -> tuple[list[dict], str]:
 
 
 def _recount() -> None:
-    fn = getattr(_media_listing, "clear", None)
-    if callable(fn):
-        fn()
+    for cached in (_media_listing, _branch_tree, _repo_size):
+        fn = getattr(cached, "clear", None)
+        if callable(fn):
+            fn()
+
+
+@st.cache_data(ttl=120, show_spinner=False)
+def _branch_tree(_version: int) -> tuple[list[dict], str]:
+    """Whole-branch listing for the rebuild planner. Cached; costs one API call."""
+    try:
+        return D.get_store().full_tree(), ""
+    except Exception as exc:
+        return [], str(exc)
 
 
 @st.cache_data(ttl=300, show_spinner=False)
@@ -535,14 +545,9 @@ def _tab_storage(c: dict) -> None:
         help="Must be different from the branch the site is using right now.",
     )
 
-    if st.button("Work out what would be kept"):
-        try:
-            _slim_state()["tree"] = D.get_store().full_tree()
-            _slim_state()["result"] = None
-        except Exception as exc:
-            st.error(str(exc), icon="🚫")
-
-    tree = _slim_state().get("tree")
+    tree, tree_err = _branch_tree(D._version())
+    if tree_err:
+        st.error(f"Could not read the branch: {tree_err}", icon="🚫")
     if tree:
         plan = D.slim_plan(c, tree)
         if plan["blocked"]:
