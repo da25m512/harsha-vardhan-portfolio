@@ -24,7 +24,9 @@ EXTRA = """
 
 /* ---------- CSS-only project detail (:target) ---------- */
 .hv-modal {
-  position:fixed; inset:0; z-index:10000; display:grid; place-items:center;
+  /* Above Streamlit's own toolbar (z-index 999990), so an open dialog is
+     genuinely on top and its close button is the thing you click. */
+  position:fixed; inset:0; z-index:1000000; display:grid; place-items:center;
   padding: clamp(10px,2.4vw,40px);
   background: rgba(8,10,9,.86); backdrop-filter: blur(12px) saturate(.65);
   opacity:0; pointer-events:none; visibility:hidden;

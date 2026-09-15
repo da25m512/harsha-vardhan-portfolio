@@ -423,6 +423,16 @@ body, .stApp, [data-testid="stAppViewContainer"] {{
 .hv-footer a {{ color:inherit; text-decoration:none; }}
 .hv-footer a:hover {{ color: var(--accent); }}
 
+/* Streamlit floats an invisible full-width strip across the top 60px of the
+   page to hold its own toolbar. It was swallowing clicks meant for the page
+   underneath — notably a project dialog's close button, so the dialog would
+   not close and its video kept playing. Let clicks fall through the empty
+   strip; the toolbar's own controls keep theirs. */
+.stAppToolbar, .stAppToolbar > div {{ pointer-events: none !important; }}
+.stAppToolbar button,
+.stAppToolbar a,
+.stAppToolbar [role="button"] {{ pointer-events: auto !important; }}
+
 /* ============ Streamlit widgets ============ */
 .stButton > button, .stFormSubmitButton > button, .stDownloadButton > button, .stLinkButton > a {{
   border-radius:0 !important; border:1px solid var(--line) !important;
