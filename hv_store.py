@@ -271,11 +271,17 @@ class GitHubStore(Store):
         sha = self._current_sha(path)
         if not sha:
             return
-        self._session.delete(
+        r = self._session.delete(
             self._url(path),
             json={"message": message, "sha": sha, "branch": self.branch},
             timeout=TIMEOUT,
         )
+        if r.status_code >= 400:
+            raise StoreError(
+                f"Could not delete {path} ({r.status_code}). "
+                "Check the token still has Contents: Read and write."
+            )
+        self._sha_cache.pop(path, None)
 
     def media_url(self, path: str) -> str:
         p = path.lstrip("/")

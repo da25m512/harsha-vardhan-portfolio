@@ -499,3 +499,73 @@ def human_size(n: float) -> str:
             return f"{n:.0f} {unit}" if unit == "B" else f"{n:.1f} {unit}"
         n /= 1024
     return f"{n:.1f} GB"
+
+
+def orphan_delete_plan(
+    content: dict,
+    requested: list[str],
+    expected_live: set[str] | None = None,
+) -> tuple[list[str], list[tuple[str, str]]]:
+    """Decide which requested paths may actually be deleted.
+
+    Returns (deletable, refused) where refused carries a reason per path.
+
+    The dangerous failure here is a content read that quietly returns an empty
+    list: nothing would look referenced, and every file on the branch would
+    read as an orphan. Two guards close that off.
+
+      * If nothing at all is referenced but files were requested, the content
+        clearly did not load, so the whole run is refused.
+      * `expected_live` is the reference set as it stood when the list was put
+        in front of the owner. If any of those references have since vanished,
+        the picture changed underneath us -- refuse and make them recount,
+        rather than acting on a stale or half-read view.
+
+    Beyond that, each path is re-checked individually, so a file that became
+    referenced after the list was drawn is never removed.
+    """
+    requested = [str(p or "").strip() for p in requested]
+    requested = [p for p in requested if p]
+    if not requested:
+        return [], []
+
+    live = referenced_media(content)
+
+    if not live:
+        return [], [(p, "the site's content could not be read") for p in requested]
+
+    if expected_live is not None and (lost := set(expected_live) - live):
+        why = f"{len(lost)} reference(s) disappeared since this list was made"
+        return [], [(p, why) for p in requested]
+
+    deletable, refused = [], []
+    for p in requested:
+        if not p.startswith("media/") or ".." in p:
+            refused.append((p, "outside media storage"))
+        elif p in live:
+            refused.append((p, "now in use"))
+        else:
+            deletable.append(p)
+    return deletable, refused
+
+
+def delete_media(paths: list[str], progress=None) -> tuple[list[str], list[tuple[str, str]]]:
+    """Delete each path, carrying on past individual failures.
+
+    Returns (deleted, failed). Callers are expected to have run the paths
+    through orphan_delete_plan first; this does the work and nothing else.
+    """
+    deleted: list[str] = []
+    failed: list[tuple[str, str]] = []
+    total = len(paths) or 1
+    for i, path in enumerate(paths, 1):
+        try:
+            store_for(path).delete(path, f"content: remove unused {path.split('/')[-1]}")
+            deleted.append(path)
+        except Exception as exc:
+            failed.append((path, str(exc)))
+        if progress is not None:
+            progress(i / total, path)
+    if deleted:
+        bump()
+    return deleted, failed
