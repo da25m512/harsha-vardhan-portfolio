@@ -304,6 +304,87 @@ def _recount() -> None:
         fn()
 
 
+@st.cache_data(ttl=300, show_spinner=False)
+def _repo_size(_version: int) -> int:
+    try:
+        return D.get_store().repo_size_bytes()
+    except Exception:
+        return 0
+
+
+def _slim_state() -> dict:
+    return st.session_state.setdefault("_hv_slim", {})
+
+
+def _build_slim(name: str, plan: dict) -> None:
+    """Create the slimmed branch, then prove it carries every keeper.
+
+    Verification is not optional: the new branch is read back and compared by
+    blob SHA against the plan, so the owner is told it worked only if every
+    file the site needs is genuinely there.
+    """
+    store = D.get_store()
+    try:
+        with st.spinner(f"Building `{name}`…"):
+            commit = store.build_orphan_branch(
+                name, plan["keep"],
+                f"content: rebuild without {len(plan['drop'])} unused file(s)",
+            )
+            rebuilt = store.full_tree(name)
+    except Exception as exc:
+        _slim_state()["result"] = {"error": str(exc)}
+        st.rerun()
+
+    problems = D.verify_rebuild(plan, rebuilt)
+    _slim_state()["result"] = {
+        "branch": name,
+        "commit": commit[:7],
+        "kept": len(plan["keep"]),
+        "dropped": len(plan["drop"]),
+        "saved": plan["drop_bytes"],
+        "problems": problems,
+    }
+    st.session_state.pop("hv_slim_confirm", None)
+    st.rerun()
+
+
+def _slim_result() -> None:
+    out = _slim_state().get("result")
+    if not out:
+        return
+    if out.get("error"):
+        st.error(f"The branch was not built: {out['error']}", icon="🚫")
+        return
+    if out["problems"]:
+        st.error(
+            f"`{out['branch']}` was created but did NOT verify — do not switch to "
+            "it, and do not delete anything. Problems: "
+            + "; ".join(out["problems"][:5]),
+            icon="🛑",
+        )
+        return
+
+    st.success(
+        f"`{out['branch']}` built and verified at commit {out['commit']}. All "
+        f"{out['kept']} files the site needs are present and byte-identical; "
+        f"{out['dropped']} unused file(s) were left behind, which is "
+        f"{D.human_size(out['saved'])} of media plus all of its history.",
+        icon="✅",
+    )
+    st.markdown(
+        "**Your site is still running on the old branch — nothing has changed yet.**\n\n"
+        "When you are ready, and only then:\n\n"
+        f"1. **Manage app → Settings → Secrets**, change `branch` to `{out['branch']}`, save.\n"
+        "2. Wait for the reboot, then **look at the whole site** — every image, every "
+        "video, and the admin console.\n"
+        "3. Only once you are happy, delete the old branch on GitHub "
+        "(**Branches → 🗑**). That is the step that frees the space.\n\n"
+        "If anything looks wrong at step 2, change the secret back and nothing is lost. "
+        "After step 3 GitHub frees the disk when its garbage collection runs, so the "
+        "reported size can take a while to drop."
+    )
+
+
 def _bar(live: int, orphan: int) -> str:
     total = live + orphan
     if total <= 0:
@@ -365,6 +446,13 @@ def _tab_storage(c: dict) -> None:
 
     _md(_bar(r["live_bytes"], r["orphan_bytes"]))
 
+    if size := _repo_size(D._version()):
+        st.caption(
+            f"**Whole repository on GitHub: {D.human_size(size)}** — code, both "
+            "branches, and every version ever committed. GitHub recalculates this "
+            "about once an hour, so it lags a recent change."
+        )
+
     # ---- by kind --------------------------------------------------------
     st.subheader("Where it goes")
     label = {
@@ -424,6 +512,82 @@ def _tab_storage(c: dict) -> None:
             "so they will not load: " + ", ".join(m.split("/")[-1] for m in r["missing"][:5]),
             icon="🔗",
         )
+
+    # ---- rebuilding the branch without the orphans -----------------------
+    st.subheader("Reduce the repository size")
+    st.caption(
+        "Deleting files cannot shrink a git repository, because every version "
+        "ever committed stays in the history. The only thing that works is "
+        "rebuilding the branch **without** that history. This makes a brand new "
+        "branch holding your live files and nothing else — it reads the existing "
+        "files by reference, so nothing is re-uploaded and it takes seconds."
+    )
+    st.info(
+        "This button **only creates a new branch**. It does not delete, move or "
+        "change anything you are using now, so your live files cannot be lost by "
+        "pressing it. The old branch stays exactly as it is until you choose to "
+        "remove it yourself, after you have seen the site working.",
+        icon="🛟",
+    )
+
+    target = st.text_input(
+        "Name for the new branch", value="content-slim", key="hv_slim_branch",
+        help="Must be different from the branch the site is using right now.",
+    )
+
+    if st.button("Work out what would be kept"):
+        try:
+            _slim_state()["tree"] = D.get_store().full_tree()
+            _slim_state()["result"] = None
+        except Exception as exc:
+            st.error(str(exc), icon="🚫")
+
+    tree = _slim_state().get("tree")
+    if tree:
+        plan = D.slim_plan(c, tree)
+        if plan["blocked"]:
+            st.error(
+                f"Rebuild refused — {plan['blocked']}. Nothing has been changed.",
+                icon="🛑",
+            )
+            if plan["missing"]:
+                st.caption("Referenced but not stored: "
+                           + ", ".join(m.split("/")[-1] for m in plan["missing"][:8]))
+        else:
+            a, b = st.columns(2)
+            a.metric("Would be kept", D.human_size(plan["keep_bytes"]),
+                     delta=f"{len(plan['keep'])} files", delta_color="off")
+            b.metric("Would be dropped", D.human_size(plan["drop_bytes"]),
+                     delta=f"{len(plan['drop'])} files", delta_color="off")
+            st.caption(
+                f"Kept: {plan['data_files']} content file(s) plus every image and "
+                f"video the site links to. Dropped: only media nothing points at."
+            )
+            with st.expander(f"Everything that would be kept ({len(plan['keep'])})"):
+                st.dataframe(
+                    [{"File": t["path"], "Size": D.human_size(t["bytes"])}
+                     for t in plan["keep"]],
+                    hide_index=True, width="stretch",
+                )
+            with st.expander(f"Everything that would be dropped ({len(plan['drop'])})"):
+                st.dataframe(
+                    [{"File": t["path"], "Size": D.human_size(t["bytes"])}
+                     for t in sorted(plan["drop"], key=lambda t: -t["bytes"])],
+                    hide_index=True, width="stretch",
+                )
+
+            same = target.strip() == getattr(D.get_store(), "branch", "")
+            if same:
+                st.error("Pick a different name — that is the branch in use.", icon="🚫")
+            agreed = st.checkbox(
+                "I have checked the kept list and want the new branch built",
+                key="hv_slim_confirm",
+            )
+            if st.button("🌱 Build the new branch", type="primary",
+                         disabled=not agreed or same or not target.strip()):
+                _build_slim(target.strip(), plan)
+
+    _slim_result()
 
     # ---- the honest part ------------------------------------------------
     with st.expander("Why orphaned files stay, and what the limits are"):

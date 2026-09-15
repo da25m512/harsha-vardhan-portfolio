@@ -499,3 +499,74 @@ def human_size(n: float) -> str:
             return f"{n:.0f} {unit}" if unit == "B" else f"{n:.1f} {unit}"
         n /= 1024
     return f"{n:.1f} GB"
+
+
+def slim_plan(content: dict, tree: list[dict]) -> dict:
+    """Work out what a rebuilt content branch should contain.
+
+    The rule is deliberately lopsided: a file is dropped ONLY if it is media
+    and nothing in the content points at it. Everything else -- the JSON, and
+    any file we do not recognise -- is kept. A mistake in the reference
+    scanner can therefore only ever keep too much, never lose something.
+
+    Returns a dict with the keeper entries, the droppable ones, and `blocked`,
+    which is a human-readable reason when the rebuild must not run at all.
+    """
+    live = referenced_media(content)
+    blobs = [t for t in tree if t.get("path")]
+
+    keep, drop = [], []
+    for t in blobs:
+        path = t["path"]
+        if path.startswith("media/") and path not in live:
+            drop.append(t)
+        else:
+            keep.append(t)
+
+    present = {t["path"] for t in blobs}
+    missing = sorted(live - present)
+
+    blocked = ""
+    if not blobs:
+        blocked = "the branch appears to be empty"
+    elif not live:
+        # Every media file would look unused -- almost certainly a failed read
+        # rather than a genuinely media-free site.
+        blocked = "the site's content could not be read, so nothing looks referenced"
+    elif missing:
+        blocked = (
+            f"{len(missing)} file(s) the site points at are not on the branch "
+            "(fix or remove those references first)"
+        )
+    elif not keep:
+        blocked = "nothing would be kept"
+
+    return {
+        "keep": keep,
+        "drop": drop,
+        "missing": missing,
+        "blocked": blocked,
+        "keep_bytes": sum(t.get("bytes", 0) for t in keep),
+        "drop_bytes": sum(t.get("bytes", 0) for t in drop),
+        "data_files": sum(1 for t in keep if not t["path"].startswith("media/")),
+    }
+
+
+def verify_rebuild(plan: dict, rebuilt: list[dict]) -> list[str]:
+    """Confirm a rebuilt branch really carries every keeper, byte for byte.
+
+    Compares blob SHAs, so a file that arrived with different content is caught
+    as well as one that never arrived. Returns a list of problems; empty means
+    the new branch is a faithful copy of everything that had to survive.
+    """
+    got = {t["path"]: t["sha"] for t in rebuilt}
+    problems = []
+    for t in plan["keep"]:
+        if t["path"] not in got:
+            problems.append(f"missing: {t['path']}")
+        elif got[t["path"]] != t["sha"]:
+            problems.append(f"content differs: {t['path']}")
+    for path in got:
+        if path.startswith("media/") and path not in {t["path"] for t in plan["keep"]}:
+            problems.append(f"unexpected extra file: {path}")
+    return problems

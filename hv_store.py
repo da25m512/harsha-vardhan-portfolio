@@ -51,6 +51,103 @@ class Store:
     def delete(self, path: str, message: str) -> None:
         raise NotImplementedError
 
+    # -- whole-branch operations -------------------------------------------
+    def full_tree(self, ref: str | None = None) -> list[dict]:
+        """Every blob on a branch as {path, sha, bytes, mode}.
+
+        Unlike list_media this covers the whole branch, so the caller can
+        decide what to keep rather than assuming only media matters.
+        """
+        ref = ref or self.branch
+        r = self._session.get(
+            f"{API}/repos/{self.owner}/{self.repo}/git/trees/{ref}",
+            params={"recursive": "1"},
+            timeout=TIMEOUT,
+        )
+        if r.status_code == 404:
+            raise StoreError(f"Branch `{ref}` does not exist.")
+        if r.status_code >= 400:
+            raise StoreError(f"Could not read branch `{ref}` ({r.status_code}).")
+        body = r.json()
+        if body.get("truncated"):
+            raise StoreError(
+                "GitHub truncated the file listing, so the rebuild cannot be "
+                "certain it would carry every file across. Aborting."
+            )
+        return [
+            {"path": t["path"], "sha": t["sha"],
+             "bytes": int(t.get("size") or 0), "mode": t.get("mode", "100644")}
+            for t in body.get("tree", [])
+            if t.get("type") == "blob"
+        ]
+
+    def build_orphan_branch(self, name: str, entries: list[dict], message: str) -> str:
+        """Create `name` as a single parentless commit holding `entries`.
+
+        Entries carry the blob SHAs that already exist in the repository, so no
+        file content is uploaded -- git simply points a new tree at objects it
+        already has. Because the commit has no parents, none of the old history
+        is reachable through this branch, which is the whole point: once the
+        original branch is gone, the superseded blobs can be collected.
+
+        Returns the new commit SHA. Never touches the branch it read from.
+        """
+        if not entries:
+            raise StoreError("Refusing to build an empty branch.")
+        if name == self.branch:
+            raise StoreError(
+                f"Refusing to overwrite the live branch `{self.branch}`. "
+                "The rebuild must go to a different branch."
+            )
+
+        tree = [
+            {"path": e["path"], "mode": e.get("mode", "100644"),
+             "type": "blob", "sha": e["sha"]}
+            for e in entries
+        ]
+        r = self._session.post(
+            f"{API}/repos/{self.owner}/{self.repo}/git/trees",
+            json={"tree": tree},
+            timeout=90,
+        )
+        if r.status_code >= 400:
+            raise StoreError(f"Could not create the tree ({r.status_code}): {r.text[:200]}")
+        tree_sha = r.json()["sha"]
+
+        r = self._session.post(
+            f"{API}/repos/{self.owner}/{self.repo}/git/commits",
+            json={"message": message, "tree": tree_sha, "parents": []},
+            timeout=TIMEOUT,
+        )
+        if r.status_code >= 400:
+            raise StoreError(f"Could not create the commit ({r.status_code}): {r.text[:200]}")
+        commit_sha = r.json()["sha"]
+
+        ref = f"refs/heads/{name}"
+        r = self._session.post(
+            f"{API}/repos/{self.owner}/{self.repo}/git/refs",
+            json={"ref": ref, "sha": commit_sha},
+            timeout=TIMEOUT,
+        )
+        if r.status_code == 422:  # branch already there -- move it
+            r = self._session.patch(
+                f"{API}/repos/{self.owner}/{self.repo}/git/refs/heads/{name}",
+                json={"sha": commit_sha, "force": True},
+                timeout=TIMEOUT,
+            )
+        if r.status_code >= 400:
+            raise StoreError(f"Could not point `{name}` at the new commit ({r.status_code}).")
+        return commit_sha
+
+    def repo_size_bytes(self) -> int:
+        """Repository size as GitHub reports it. Recalculated hourly, so it lags."""
+        r = self._session.get(
+            f"{API}/repos/{self.owner}/{self.repo}", timeout=TIMEOUT
+        )
+        if r.status_code >= 400:
+            return 0
+        return int(r.json().get("size") or 0) * 1024
+
     def media_url(self, path: str) -> str:
         raise NotImplementedError
 
