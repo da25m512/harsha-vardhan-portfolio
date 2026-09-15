@@ -541,24 +541,34 @@ def _tab_storage(c: dict) -> None:
             icon="⚠️",
         )
 
+    # The repository figure comes first: it is the number that actually matters
+    # and the one that changes when anything here is cleaned up.
+    size = _repo_size(D._version())
     cols = st.columns(4)
-    cols[0].metric("Total stored", D.human_size(r["bytes"]),
+    cols[0].metric(
+        "Repository on GitHub",
+        D.human_size(size) if size else "—",
+        delta="every branch, all history", delta_color="off",
+    )
+    cols[1].metric("Stored here", D.human_size(r["bytes"]),
                    delta=f"{r['files']} files", delta_color="off")
-    cols[1].metric("In use", D.human_size(r["live_bytes"]),
+    cols[2].metric("In use", D.human_size(r["live_bytes"]),
                    delta=f"{r['live_files']} files", delta_color="off")
-    cols[2].metric("Orphaned", D.human_size(r["orphan_bytes"]),
+    cols[3].metric("Unused", D.human_size(r["orphan_bytes"]),
                    delta=f"{r['orphan_files']} files", delta_color="inverse")
-    share = round(r["orphan_bytes"] / r["bytes"] * 100) if r["bytes"] else 0
-    cols[3].metric("Wasted", f"{share}%",
-                   delta="of everything stored", delta_color="off")
 
     _md(_bar(r["live_bytes"], r["orphan_bytes"]))
 
-    if size := _repo_size(D._version()):
+    if size:
+        share = round(r["orphan_bytes"] / r["bytes"] * 100) if r["bytes"] else 0
         st.caption(
-            f"**Whole repository on GitHub: {D.human_size(size)}** — code, both "
-            "branches, and every version ever committed. GitHub recalculates this "
-            "about once an hour, so it lags a recent change."
+            f"**Repository: {D.human_size(size)}** — that covers every branch and "
+            "every version ever committed, which is why it is bigger than the "
+            f"{D.human_size(r['bytes'])} on this branch. **Stored here** is the "
+            f"current content branch, of which {share}% is unused. GitHub "
+            "recalculates the repository figure about once an hour, and frees "
+            "deleted space only when its garbage collection runs — so it lags "
+            "behind anything you do on this page, sometimes by days."
         )
 
     # ---- by kind --------------------------------------------------------
