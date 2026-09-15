@@ -407,11 +407,11 @@ def _work(site: dict, projects: list[dict], reel: str) -> None:
 
 # --------------------------------------------------------------------------
 def _showreel(site: dict, reel: str) -> None:
-    reel = [
+    clips = [
         {"type": "file", "url": site.get("showreel_file", "")},
         {"type": "link", "url": site.get("showreel_url", "")},
     ]
-    body = _videos_html(reel) or (
+    body = _videos_html(clips) or (
         '<div class="hv-video hv-rise"><div class="hv-video-empty">Reel in assembly</div></div>'
     )
     _md(
@@ -536,9 +536,10 @@ def _contact(site: dict, reel: str) -> None:
     email = str(site.get("email") or "").strip()
     mail = safe_url("mailto:" + email) if email else ""
     cta = (
-        f'<a class="hv-cta" href="{attr(mail)}">{esc(email)}</a>'
+        f'<a class="hv-cta" style="--cta-len:{max(len(email), 8)}" '
+        f'href="{attr(mail)}">{esc(email)}</a>'
         if mail
-        else '<span class="hv-cta" style="color:var(--paper-3)">Get in touch</span>'
+        else '<span class="hv-cta" style="--cta-len:12;color:var(--paper-3)">Get in touch</span>'
     )
     links = [
         f'<a href="{attr(u)}" target="_blank" rel="noopener noreferrer">{esc(s.get("label") or "Link")} &#8599;</a>'
@@ -550,7 +551,7 @@ def _contact(site: dict, reel: str) -> None:
 
     _md(
         _open(reel, [("Sec", "Contact"), ("Reply", "Usually same week")], "Let's make <em>something</em>", "contact")
-        + f'<div class="hv-rise">{cta}</div><div class="hv-links hv-rise">{"".join(links)}</div>'
+        + f'<div class="hv-rise hv-cta-wrap">{cta}</div><div class="hv-links hv-rise">{"".join(links)}</div>'
         + _CLOSE
         + f"""
 <footer class="hv-footer">
@@ -667,6 +668,28 @@ def _enhance() -> None:
       .querySelectorAll(".hv-embed:not([data-hv-built])").forEach(build);
   }
 
+  // Closing a project has to actually stop its players. A <video> is paused;
+  // an embed is torn down to its placeholder, because a cross-origin frame
+  // keeps playing (and keeps its audio) after the dialog is hidden. Reopening
+  // the project rebuilds it.
+  function quiet(modal) {
+    modal.querySelectorAll("video").forEach(function (v) {
+      try { v.pause(); } catch (e) { /* nothing to pause */ }
+    });
+    modal.querySelectorAll(".hv-embed[data-hv-built]").forEach(function (box) {
+      var f = box.querySelector("iframe");
+      if (f) f.remove();
+      delete box.dataset.hvBuilt;
+    });
+  }
+
+  function syncPlayers(d) {
+    var h = d.defaultView.location.hash;
+    d.querySelectorAll(".hv-modal").forEach(function (m) {
+      if ("#" + m.id !== h) quiet(m);
+    });
+  }
+
   function hydrateTarget(d) {
     var h = d.defaultView.location.hash;
     if (!h || h.length < 2) return;
@@ -688,7 +711,12 @@ def _enhance() -> None:
     });
     d.querySelectorAll("video[data-hv-src]").forEach(function (v) { cacheHero(v, w); });
     hydrateTarget(d);
-    w.addEventListener("hashchange", function () { hydrateTarget(d); });
+    w.addEventListener("hashchange", function () {
+      syncPlayers(d);      // silence whatever was just closed
+      hydrateTarget(d);    // then wake up whatever was just opened
+    });
+    // Leaving the page entirely (back button, tab close) also stops playback.
+    w.addEventListener("pagehide", function () { syncPlayers(d); });
 
     var spot = d.getElementById("hv-spot");
     if (spot && w.matchMedia("(pointer:fine)").matches &&

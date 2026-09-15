@@ -392,11 +392,23 @@ body, .stApp, [data-testid="stAppViewContainer"] {{
 /* ============ contact / footer ============ */
 .hv-cta {{
   font-family: var(--display); font-weight:900; text-transform:uppercase;
-  font-size: clamp(30px,7vw,104px); line-height:.88; letter-spacing:-.015em;
+  /* Shrink to fit: the longer the address, the smaller the type. --cta-len is
+     set inline from the real string length and 0.52em is the measured average
+     advance of this face at weight 900 (~0.486em, plus headroom). The vw form
+     below is the fallback; the container query under it is the accurate one. */
+  font-size: clamp(14px, min(7vw, calc(76vw / (var(--cta-len, 14) * 0.52))), 104px);
+  line-height:.92; letter-spacing:-.015em;
   color: var(--paper); text-decoration:none; display:inline-block;
-  transition: color .35s, transform .55s cubic-bezier(.16,1,.3,1); word-break: break-word;
+  max-width:100%; overflow-wrap:anywhere; word-break:normal;
+  transition: color .35s, transform .55s cubic-bezier(.16,1,.3,1);
 }}
-.hv-cta:hover {{ color: var(--accent); transform: translateX(10px); }}
+.hv-cta:hover {{ color: var(--accent); transform: translateX(6px); }}
+/* The column the address sits in is narrower than the viewport (Streamlit adds
+   its own max-width), so measure against the column, not the window. */
+.hv-cta-wrap {{ container-type: inline-size; }}
+@supports (container-type: inline-size) {{
+  .hv-cta {{ font-size: clamp(14px, calc(100cqi / (var(--cta-len, 14) * 0.52)), 104px); }}
+}}
 .hv-links {{ display:flex; flex-wrap:wrap; gap: clamp(12px,1.8vw,26px); margin-top:28px; }}
 .hv-links a {{
   font-family:var(--mono); font-size:10px; letter-spacing:.2em; text-transform:uppercase;
