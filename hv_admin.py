@@ -753,6 +753,29 @@ def _tab_appearance(c: dict) -> None:
     s["sections"] = secs
     s["section_titles"] = titles
 
+    st.subheader("Loading & data use")
+    s["cache_hero"] = st.toggle(
+        "Keep the hero video on the visitor's device",
+        value=bool(s.get("cache_hero", True)),
+        help="Stores the background video in the browser's own storage after "
+             "the first visit.",
+    )
+    if s.get("cache_hero", True):
+        st.caption(
+            "**On.** A visitor downloads the hero video once; every later visit "
+            "plays it straight from their device, using no data. A thin progress "
+            "line shows while it downloads the first time, and the still image "
+            "holds the frame until it's ready. When you upload a new hero video "
+            "the old one is deleted from their device automatically and the new "
+            "one is fetched — nothing stale is left behind."
+        )
+    else:
+        st.caption(
+            "**Off.** The video streams from the CDN on every visit. Browsers "
+            "still cache it for about a week on their own, but large files get "
+            "evicted and re-downloaded, so returning visitors may pay for it again."
+        )
+
     st.subheader("Guestbook")
     a, b = st.columns(2)
     s["guestbook_open"] = a.toggle("Accept new messages", value=bool(s.get("guestbook_open", True)))

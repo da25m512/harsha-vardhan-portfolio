@@ -158,7 +158,21 @@ def _hero(site: dict) -> None:
     name_html = "".join(lines)
 
     vid, im = img_src(site.get("hero_video", "")), img_src(site.get("hero_image", ""))
-    if vid:
+    if vid and site.get("cache_hero", True):
+        # The video is kept in the browser's Cache Storage, so a returning
+        # visitor pays for it once instead of on every visit. The still (or a
+        # plain ground) holds the frame while it downloads, and the filename
+        # changes whenever a new video is uploaded, which retires the old copy.
+        still = f'<img class="hv-hero-still" src="{im}" alt="">' if im else ""
+        bg = (
+            '<div class="hv-hero-bg">'
+            f"{still}"
+            f'<video class="hv-hero-video" data-hv-src="{vid}" muted loop '
+            'playsinline preload="none"></video>'
+            '<div class="hv-hero-load" hidden><i></i></div>'
+            "</div>"
+        )
+    elif vid:
         bg = f'<div class="hv-hero-bg"><video src="{vid}" autoplay muted loop playsinline></video></div>'
     elif im:
         bg = f'<div class="hv-hero-bg"><img src="{im}" alt=""></div>'
@@ -563,6 +577,70 @@ def _enhance() -> None:
 <script>
 (function () {
   var ALLOWED = ["www.youtube-nocookie.com", "player.vimeo.com"];
+  var HERO_CACHE = "hv-hero-v1";
+
+  // Keep the hero video in Cache Storage so a returning visitor does not
+  // re-download it. Anything cached under a different URL is dropped, so
+  // uploading a new video replaces the stored copy instead of stacking up.
+  async function cacheHero(v, w) {
+    var url = v.getAttribute("data-hv-src");
+    if (!url || v.dataset.hvStarted) return;
+    v.dataset.hvStarted = "1";
+    var box = v.parentElement;
+    var bar = box && box.querySelector(".hv-hero-load");
+    var fill = bar && bar.firstElementChild;
+    function progress(pct) {
+      if (!bar) return;
+      bar.hidden = false;
+      if (fill) fill.style.width = pct + "%";
+    }
+    var src = url;
+    try {
+      if (!w.caches) throw new Error("no cache storage");
+      var absolute = new w.URL(url, w.location.href).href;
+      var cache = await w.caches.open(HERO_CACHE);
+      var keys = await cache.keys();
+      for (var i = 0; i < keys.length; i++) {
+        if (keys[i].url !== absolute) await cache.delete(keys[i]);
+      }
+      var hit = await cache.match(absolute);
+      if (!hit) {
+        var res = await w.fetch(absolute);
+        if (!res.ok) throw new Error("fetch " + res.status);
+        var total = Number(res.headers.get("content-length") || 0);
+        var reader = res.body && res.body.getReader ? res.body.getReader() : null;
+        var blob;
+        if (reader) {
+          var chunks = [], got = 0;
+          for (;;) {
+            var step = await reader.read();
+            if (step.done) break;
+            chunks.push(step.value);
+            got += step.value.length;
+            if (total) progress(Math.min(99, Math.round((got / total) * 100)));
+          }
+          blob = new w.Blob(chunks, { type: res.headers.get("content-type") || "video/mp4" });
+        } else {
+          blob = await res.blob();
+        }
+        await cache.put(absolute, new w.Response(blob, {
+          headers: { "Content-Type": blob.type || "video/mp4" }
+        }));
+        hit = await cache.match(absolute);
+      }
+      var stored = await hit.blob();
+      src = w.URL.createObjectURL(stored);
+    } catch (err) {
+      src = url;  // stream straight from the CDN instead
+    }
+    if (bar) bar.hidden = true;
+    v.addEventListener("canplay", function () {
+      if (box) box.classList.add("hv-hero-ready");
+    }, { once: true });
+    v.src = src;
+    var go = v.play();
+    if (go && go.catch) go.catch(function () {});
+  }
 
   function build(box) {
     if (!box || box.dataset.hvBuilt) return;
@@ -608,6 +686,7 @@ def _enhance() -> None:
     d.querySelectorAll(".hv-embed").forEach(function (box) {
       if (!box.closest(".hv-modal")) build(box);
     });
+    d.querySelectorAll("video[data-hv-src]").forEach(function (v) { cacheHero(v, w); });
     hydrateTarget(d);
     w.addEventListener("hashchange", function () { hydrateTarget(d); });
 

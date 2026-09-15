@@ -77,6 +77,23 @@ EXTRA = """
 }
 .hv-tag:hover { border-color:var(--accent); color:var(--accent); }
 
+/* ---------- hero video: still holds the frame until the video is ready ---------- */
+.hv-hero-still {
+  position:absolute; inset:0; width:100%; height:100%; object-fit:cover;
+  transition: opacity .7s ease;
+}
+.hv-hero-video { opacity:0; transition: opacity .7s ease; }
+.hv-hero-ready .hv-hero-video { opacity:1; }
+.hv-hero-ready .hv-hero-still { opacity:0; }
+.hv-hero-load {
+  position:absolute; left:var(--gut); right:var(--gut); bottom:14px; height:2px;
+  background: rgba(233,231,223,.14); z-index:3; overflow:hidden;
+}
+.hv-hero-load i {
+  display:block; height:100%; width:0%; background:var(--accent);
+  transition: width .25s linear;
+}
+
 /* ---------- several videos on one project ---------- */
 .hv-video-grid { display:grid; gap: clamp(10px,1.2vw,18px); }
 .hv-video-grid.two { grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr)); }

@@ -50,6 +50,7 @@ DEFAULT_SITE: dict[str, Any] = {
     "accent": "#57C8B0",
     "accent_2": "#E4813F",
     "grain": True,
+    "cache_hero": True,
     "sections": {
         "statement": True,
         "work": True,
@@ -334,13 +335,17 @@ def save_site(site: dict) -> None:
     save(SITE_PATH, site, "site settings")
 
 
-def upload(folder: str, uploaded_file) -> str:
-    """Persist a Streamlit UploadedFile and return a public URL."""
+def upload_bytes(folder: str, filename: str, blob: bytes) -> str:
+    """Persist raw bytes as media and return a public URL."""
     from hv_store import new_media_path
 
-    blob = uploaded_file.getvalue()
-    path = new_media_path(folder, uploaded_file.name)
+    path = new_media_path(folder, filename)
     return get_store().write_binary(path, blob, f"content: add {path}")
+
+
+def upload(folder: str, uploaded_file) -> str:
+    """Persist a Streamlit UploadedFile and return a public URL."""
+    return upload_bytes(folder, uploaded_file.name, uploaded_file.getvalue())
 
 
 def normalise_project(p: dict) -> dict:
