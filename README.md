@@ -1,4 +1,4 @@
-# Marothu Harsha Vardhan — Director
+# Marothu Harsha Vardhan 
 
 A portfolio platform with two roles:
 
