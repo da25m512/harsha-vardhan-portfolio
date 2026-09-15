@@ -477,7 +477,7 @@ def _guestbook(site: dict, messages: list[dict], reel: str) -> None:
         _open(reel, [("Sec", "Guestbook"), ("Notes", str(len(shown))), ("Login", "Not required")],
               _title(site["section_titles"]["guestbook"]), "guestbook")
         + '<p class="hv-p hv-rise">No account, no login. Leave a note, a question or an idea '
-        "&mdash; it goes straight to the director.</p>"
+        .</p>"
         + "    </div>\n  </div></div>"
     )
 
