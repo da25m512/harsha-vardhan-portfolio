@@ -287,6 +287,166 @@ def _tab_overview(c: dict) -> None:
 
 
 # --------------------------------------------------------------------------
+# Storage
+# --------------------------------------------------------------------------
+@st.cache_data(ttl=120, show_spinner=False)
+def _media_listing(_version: int) -> tuple[list[dict], str]:
+    """Media files on the content branch. Cached, because it costs an API call."""
+    try:
+        return D.get_store().list_media(), ""
+    except Exception as exc:  # network, permissions, rate limit
+        return [], str(exc)
+
+
+def _recount() -> None:
+    fn = getattr(_media_listing, "clear", None)
+    if callable(fn):
+        fn()
+
+
+def _bar(live: int, orphan: int) -> str:
+    total = live + orphan
+    if total <= 0:
+        return ""
+    pct = round(live / total * 100)
+    return (
+        '<div style="display:flex;height:16px;border:1px solid var(--line);'
+        'margin:6px 0 10px;overflow:hidden">'
+        f'<div style="width:{pct}%;background:var(--accent)"></div>'
+        f'<div style="width:{100 - pct}%;background:var(--warm);opacity:.55"></div>'
+        "</div>"
+        '<div style="font-family:var(--mono);font-size:10px;letter-spacing:.14em;'
+        'text-transform:uppercase;color:var(--paper-3)">'
+        f"<span style=\"color:var(--accent)\">&#9632;</span> In use &nbsp;&nbsp;"
+        f"<span style=\"color:var(--warm)\">&#9632;</span> Orphaned</div>"
+    )
+
+
+def _tab_storage(c: dict) -> None:
+    store = D.get_store()
+    if not isinstance(store, GitHubStore):
+        st.info(
+            "Storage figures need the GitHub connection. This app is currently on "
+            "temporary local storage — see the Overview tab.",
+            icon="ℹ️",
+        )
+        return
+
+    if st.button("↻ Recount", help="Re-reads the file list from GitHub."):
+        _recount()
+        st.rerun()
+
+    files, err = _media_listing(D._version())
+    if err:
+        st.error(f"Could not read the file list: {err}", icon="🚫")
+        return
+    if not files:
+        st.info("No media uploaded yet.", icon="📭")
+        return
+
+    r = D.storage_report(c, files)
+    if r["truncated"]:
+        st.warning(
+            "GitHub truncated the file list, so these totals are a floor, not the "
+            "full picture.",
+            icon="⚠️",
+        )
+
+    cols = st.columns(4)
+    cols[0].metric("Total stored", D.human_size(r["bytes"]),
+                   delta=f"{r['files']} files", delta_color="off")
+    cols[1].metric("In use", D.human_size(r["live_bytes"]),
+                   delta=f"{r['live_files']} files", delta_color="off")
+    cols[2].metric("Orphaned", D.human_size(r["orphan_bytes"]),
+                   delta=f"{r['orphan_files']} files", delta_color="inverse")
+    share = round(r["orphan_bytes"] / r["bytes"] * 100) if r["bytes"] else 0
+    cols[3].metric("Wasted", f"{share}%",
+                   delta="of everything stored", delta_color="off")
+
+    _md(_bar(r["live_bytes"], r["orphan_bytes"]))
+
+    # ---- by kind --------------------------------------------------------
+    st.subheader("Where it goes")
+    label = {
+        ("hero", "video"): "Hero background videos",
+        ("hero", "image"): "Hero still images",
+        ("projects", "video"): "Project videos",
+        ("projects", "image"): "Project posters & stills",
+        ("stills", "image"): "Gallery stills",
+    }
+    rows = []
+    for key, g in sorted(r["groups"].items(), key=lambda kv: -kv[1]["bytes"]):
+        name = label.get(key, f"{key[0].title()} {key[1]}s")
+        dead = g["bytes"] - g["live_bytes"]
+        rows.append({
+            "What": name,
+            "Files": g["files"],
+            "Size": D.human_size(g["bytes"]),
+            "In use": D.human_size(g["live_bytes"]),
+            "Orphaned": D.human_size(dead) if dead else "—",
+        })
+    st.dataframe(rows, hide_index=True, width="stretch")
+
+    # ---- what a visitor pays -------------------------------------------
+    live_rows = [x for x in r["rows"] if x["used"]]
+    hero = sum(x["bytes"] for x in live_rows if x["path"].startswith("media/hero/"))
+    imgs = sum(x["bytes"] for x in live_rows if x["kind"] == "image")
+    vids = sum(x["bytes"] for x in live_rows if x["kind"] == "video")
+    st.subheader("What a visitor downloads")
+    st.caption(
+        f"**First visit: about {D.human_size(hero + imgs)}** — the hero video "
+        f"({D.human_size(hero)}) and every image on the page ({D.human_size(imgs)}). "
+        f"Project videos ({D.human_size(vids)}) only load when someone presses play, "
+        "so they are not part of that figure. On a repeat visit the hero video costs "
+        "nothing, because it is served from the visitor's own cache."
+    )
+
+    # ---- biggest files --------------------------------------------------
+    st.subheader("Largest files")
+    st.dataframe(
+        [
+            {
+                "File": x["path"].split("/")[-1],
+                "Folder": x["folder"],
+                "Size": D.human_size(x["bytes"]),
+                "Status": "In use" if x["used"] else "Orphaned",
+                "Too big for the CDN": "⚠️ yes" if x["bytes"] > D.MAX_MEDIA_BYTES else "",
+            }
+            for x in r["rows"][:15]
+        ],
+        hide_index=True,
+        width="stretch",
+    )
+
+    if r["missing"]:
+        st.warning(
+            f"{len(r['missing'])} reference(s) point at files that are not in storage, "
+            "so they will not load: " + ", ".join(m.split("/")[-1] for m in r["missing"][:5]),
+            icon="🔗",
+        )
+
+    # ---- the honest part ------------------------------------------------
+    with st.expander("Why orphaned files stay, and what the limits are"):
+        st.markdown(
+            "**Removing a video or image from a project only removes the link to "
+            "it.** The file itself stays in the repository, which is why orphaned "
+            "files build up every time you swap something out.\n\n"
+            "**Deleting the file does not shrink the repository either.** Git keeps "
+            "every version that was ever committed, so the bytes remain in the "
+            "history whether or not the file is still in the latest commit. The only "
+            "ways to actually reclaim that space are rewriting the history or "
+            "starting a fresh repository.\n\n"
+            f"**Per-file limit: {D.human_size(D.MAX_MEDIA_BYTES)}.** The CDN that "
+            "serves your media refuses anything larger, so bigger uploads are "
+            "blocked before they are stored.\n\n"
+            "**Repository size.** GitHub is comfortable up to about 1 GB and starts "
+            "asking questions past 5 GB. Long videos belong on YouTube or Vimeo — "
+            "paste the link instead of uploading, and the file never touches your "
+            "storage."
+        )
+
+
+# --------------------------------------------------------------------------
 def _tab_profile(c: dict) -> None:
     s = dict(c["site"])
     st.subheader("Identity")
@@ -821,7 +981,8 @@ def render(content: dict) -> None:
             st.rerun()
 
         tabs = st.tabs(
-            ["Overview", "Profile", "Work", "Journey", "Stills", "Press", "Messages", "Appearance"]
+            ["Overview", "Profile", "Work", "Journey", "Stills", "Press",
+             "Messages", "Appearance", "Storage"]
         )
         with tabs[0]:
             _tab_overview(content)
@@ -851,3 +1012,5 @@ def render(content: dict) -> None:
             _tab_messages(content)
         with tabs[7]:
             _tab_appearance(content)
+        with tabs[8]:
+            _tab_storage(content)

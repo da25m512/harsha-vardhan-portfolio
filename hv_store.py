@@ -54,6 +54,10 @@ class Store:
     def media_url(self, path: str) -> str:
         raise NotImplementedError
 
+    def list_media(self) -> list[dict]:
+        """Every stored media file as {path, bytes}. Empty when unsupported."""
+        return []
+
     @property
     def writable(self) -> bool:
         return False
@@ -279,6 +283,33 @@ class GitHubStore(Store):
             f"https://cdn.jsdelivr.net/gh/{self.owner}/{self.repo}@{self.branch}/{p}"
         )
 
+    def list_media(self) -> list[dict]:
+        """List every blob under media/ on the content branch.
+
+        One trees call with recursive=1 returns the whole subtree, which is far
+        cheaper than walking directories. GitHub truncates very large trees; the
+        flag is passed through so the caller can say the figure is a floor
+        rather than quietly reporting a wrong total.
+        """
+        r = self._session.get(
+            f"{API}/repos/{self.owner}/{self.repo}/git/trees/{self.branch}:media",
+            params={"recursive": "1"},
+            timeout=TIMEOUT,
+        )
+        if r.status_code == 404:
+            return []
+        if r.status_code >= 400:
+            raise StoreError(f"Could not read the media tree ({r.status_code}).")
+        body = r.json()
+        out = [
+            {"path": f"media/{t['path']}", "bytes": int(t.get("size") or 0)}
+            for t in body.get("tree", [])
+            if t.get("type") == "blob"
+        ]
+        if body.get("truncated"):
+            out.append({"path": "", "bytes": 0, "truncated": True})
+        return out
+
     def raw_url(self, path: str) -> str:
         p = path.lstrip("/")
         return (
@@ -343,6 +374,17 @@ class LocalStore(Store):
             return ""
         mime = mimetypes.guess_type(str(p))[0] or "application/octet-stream"
         return f"data:{mime};base64," + base64.b64encode(p.read_bytes()).decode("ascii")
+
+    def list_media(self) -> list[dict]:
+        root = self._p("media")
+        if not root.exists():
+            return []
+        return [
+            {"path": str(f.relative_to(self.root)).replace("\\", "/"),
+             "bytes": f.stat().st_size}
+            for f in root.rglob("*")
+            if f.is_file()
+        ]
 
     @property
     def writable(self) -> bool:

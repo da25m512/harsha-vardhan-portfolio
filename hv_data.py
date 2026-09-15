@@ -7,7 +7,7 @@ from typing import Any
 
 import streamlit as st
 
-from hv_store import GitHubStore, LocalStore, Store
+from hv_store import MAX_MEDIA_BYTES, GitHubStore, LocalStore, Store
 
 SITE_PATH = "data/site.json"
 PROJECTS_PATH = "data/projects.json"
@@ -394,3 +394,108 @@ def sorted_projects(projects: list[dict], include_drafts: bool = False) -> list[
         return (0 if p.get("featured") else 1, -order, -year, str(p.get("title") or ""))
 
     return sorted(items, key=key)
+
+
+# --------------------------------------------------------------------------
+# Storage accounting
+# --------------------------------------------------------------------------
+def _media_path(url: str) -> str:
+    """Reduce a stored reference to its `media/...` path, or "" if external.
+
+    References are kept as full CDN URLs, so the same file is recognised whether
+    it came back from jsDelivr, from raw.githubusercontent, or as a bare path.
+    A YouTube or Vimeo link resolves to "" and is simply not our storage.
+    """
+    u = str(url or "").strip()
+    if not u:
+        return ""
+    if "/media/" in u:
+        return "media/" + u.split("/media/", 1)[1].split("?")[0].split("#")[0]
+    if u.startswith("media/"):
+        return u.split("?")[0]
+    return ""
+
+
+def referenced_media(content: dict) -> set[str]:
+    """Every media path the site still points at, across all content files."""
+    site = content.get("site") or {}
+    out: set[str] = set()
+
+    def add(u) -> None:
+        if p := _media_path(u):
+            out.add(p)
+
+    for key in ("hero_image", "hero_video", "showreel_file"):
+        add(site.get(key))
+
+    for p in content.get("projects") or []:
+        add(p.get("poster"))
+        add(p.get("video_url"))
+        add(p.get("video_file"))
+        for g in p.get("gallery") or []:
+            add(g)
+        for v in p.get("videos") or []:
+            add(v.get("url") if isinstance(v, dict) else v)
+
+    for g in content.get("gallery") or []:
+        add(g.get("url") if isinstance(g, dict) else g)
+
+    return out
+
+
+def _kind(path: str) -> str:
+    ext = path.rsplit(".", 1)[-1].lower() if "." in path else ""
+    return "video" if ext in {"mp4", "mov", "webm", "m4v"} else "image"
+
+
+def storage_report(content: dict, files: list[dict]) -> dict:
+    """Group stored media into live vs orphaned, by folder and kind.
+
+    `files` comes from Store.list_media(). Anything the content no longer
+    points at is orphaned: it still occupies the repository but nothing on the
+    site will ever request it.
+    """
+    truncated = any(f.get("truncated") for f in files)
+    files = [f for f in files if f.get("path")]
+    live = referenced_media(content)
+
+    rows, groups = [], {}
+    for f in files:
+        path, size = f["path"], int(f.get("bytes") or 0)
+        folder = path.split("/")[1] if path.count("/") >= 2 else "misc"
+        kind = _kind(path)
+        used = path in live
+        rows.append({"path": path, "bytes": size, "folder": folder,
+                     "kind": kind, "used": used})
+        g = groups.setdefault((folder, kind), {"files": 0, "bytes": 0,
+                                               "live_files": 0, "live_bytes": 0})
+        g["files"] += 1
+        g["bytes"] += size
+        if used:
+            g["live_files"] += 1
+            g["live_bytes"] += size
+
+    total = sum(r["bytes"] for r in rows)
+    live_bytes = sum(r["bytes"] for r in rows if r["used"])
+    missing = sorted(live - {r["path"] for r in rows})
+    return {
+        "rows": sorted(rows, key=lambda r: -r["bytes"]),
+        "groups": groups,
+        "files": len(rows),
+        "bytes": total,
+        "live_files": sum(1 for r in rows if r["used"]),
+        "live_bytes": live_bytes,
+        "orphan_files": sum(1 for r in rows if not r["used"]),
+        "orphan_bytes": total - live_bytes,
+        "missing": missing,
+        "truncated": truncated,
+    }
+
+
+def human_size(n: float) -> str:
+    n = float(n or 0)
+    for unit in ("B", "KB", "MB", "GB"):
+        if n < 1024 or unit == "GB":
+            return f"{n:.0f} {unit}" if unit == "B" else f"{n:.1f} {unit}"
+        n /= 1024
+    return f"{n:.1f} GB"
