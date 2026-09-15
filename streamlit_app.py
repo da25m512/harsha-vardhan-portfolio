@@ -15,11 +15,11 @@ from __future__ import annotations
 import streamlit as st
 
 st.set_page_config(
-    page_title="Marothu Harsha Vardhan — Director",
+    page_title="Marothu Harsha Vardhan",
     page_icon="🎬",
     layout="wide",
     initial_sidebar_state="collapsed",
-    menu_items={"About": "Portfolio of Marothu Harsha Vardhan, director."},
+    menu_items={"About": "Portfolio of Marothu Harsha Vardhan."},
 )
 
 import hv_admin as admin
