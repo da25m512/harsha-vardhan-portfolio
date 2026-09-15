@@ -322,6 +322,97 @@ def _repo_size(_version: int) -> int:
         return 0
 
 
+def _swap_in(slim: str, backup: str, plan: dict) -> None:
+    """Make the slimmed branch live, keeping the old one as a backup.
+
+    Deliberately not a rename. A rename removes the old name first, and the app
+    recreates a missing content branch on its next write -- so there would be a
+    moment where a save could resurrect an empty `content`. Moving the ref in
+    place means the live branch never stops existing, and the swap is instant.
+
+    Order matters: the backup is written *before* the live branch moves, so the
+    old commit is never unreferenced even for an instant. If the branch does not
+    verify afterwards, it is put straight back.
+
+    Every exit runs through a single rerun at the end. st.rerun() works by
+    raising, so calling it inside the try block would have it caught by the
+    handler below and reported as a failure.
+    """
+    store = D.get_store()
+    live = store.branch
+    try:
+        problems = D.verify_rebuild(plan, store.full_tree(slim))
+        if problems:
+            outcome = {"refused": "; ".join(problems[:5])}
+        else:
+            old_sha, new_sha = store.ref_sha(live), store.ref_sha(slim)
+            if not old_sha or not new_sha:
+                outcome = {"refused": "one of the branches no longer exists"}
+            else:
+                store.set_ref(backup, old_sha)      # safety net first
+                store.set_ref(live, new_sha)        # then move the live branch
+                broke = D.verify_rebuild(plan, store.full_tree(live))
+                if broke:
+                    store.set_ref(live, old_sha)    # put it back, untouched
+                    outcome = {"rolled_back": "; ".join(broke[:5]), "backup": backup}
+                else:
+                    store.delete_ref(slim)
+                    outcome = {
+                        "ok": True, "live": live, "backup": backup,
+                        "old": old_sha[:7], "new": new_sha[:7],
+                        "freed": plan["drop_bytes"], "dropped": len(plan["drop"]),
+                    }
+    except Exception as exc:
+        outcome = {"error": str(exc)}
+
+    if outcome.get("ok"):
+        D.bump()
+        _recount()
+    _slim_state()["swap"] = outcome
+    st.session_state.pop("hv_swap_confirm", None)
+    st.rerun()
+
+
+def _swap_result() -> None:
+    out = _slim_state().get("swap")
+    if not out:
+        return
+    if out.get("refused"):
+        st.error(
+            "Swap refused — the new branch did not verify, so nothing was "
+            f"changed: {out['refused']}",
+            icon="🛑",
+        )
+        return
+    if out.get("rolled_back"):
+        st.error(
+            f"The swap was undone automatically. `{out['backup']}` holds the "
+            f"original and your live branch was put straight back, so the site "
+            f"is as it was. Reason: {out['rolled_back']}",
+            icon="↩️",
+        )
+        return
+    if out.get("error"):
+        st.error(f"The swap did not complete: {out['error']}", icon="🚫")
+        return
+
+    st.success(
+        f"`{out['live']}` now serves the slimmed content ({out['old']} → "
+        f"{out['new']}), verified file by file. The previous branch is kept as "
+        f"`{out['backup']}`, so this is fully reversible.",
+        icon="✅",
+    )
+    st.markdown(
+        "**Check the public site now** — open it, look at every image and video.\n\n"
+        f"- Something wrong? Point `{out['live']}` back at `{out['backup']}` and "
+        "you are exactly where you started.\n"
+        f"- All good? Delete `{out['backup']}` on GitHub (**Branches → 🗑**). "
+        f"**That is the step that frees the {D.human_size(out['freed'])}** — until "
+        "then the old files are still referenced by the backup, and the repository "
+        "will not shrink."
+    )
+
+
 def _slim_state() -> dict:
     return st.session_state.setdefault("_hv_slim", {})
 
@@ -592,7 +683,36 @@ def _tab_storage(c: dict) -> None:
                          disabled=not agreed or same or not target.strip()):
                 _build_slim(target.strip(), plan)
 
+            # ---- step two: make it live -----------------------------------
+            existing = ""
+            try:
+                existing = D.get_store().ref_sha(target.strip()) if target.strip() else ""
+            except Exception:
+                existing = ""
+            if existing:
+                st.divider()
+                st.markdown(f"**`{target.strip()}` already exists.** Make it live?")
+                backup_name = st.text_input(
+                    "Keep the current branch under this name",
+                    value="content-backup", key="hv_backup_name",
+                    help="Your existing content branch is preserved here, so the "
+                         "swap can be undone at any time.",
+                )
+                st.caption(
+                    f"`{D.get_store().branch}` will be pointed at the slimmed "
+                    "commit and the current one saved as the backup. The live "
+                    "branch is never removed, so the site cannot be left without "
+                    "one, and the swap is checked again afterwards — if anything "
+                    "is missing it is put straight back."
+                )
+                swap_ok = st.checkbox(
+                    "Make the slimmed branch live now", key="hv_swap_confirm")
+                if st.button("🔁 Swap it in", type="primary",
+                             disabled=not swap_ok or not backup_name.strip()):
+                    _swap_in(target.strip(), backup_name.strip(), plan)
+
     _slim_result()
+    _swap_result()
 
     # ---- the honest part ------------------------------------------------
     with st.expander("Why orphaned files stay, and what the limits are"):

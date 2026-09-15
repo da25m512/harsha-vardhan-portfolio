@@ -139,6 +139,50 @@ class Store:
             raise StoreError(f"Could not point `{name}` at the new commit ({r.status_code}).")
         return commit_sha
 
+    # -- refs ---------------------------------------------------------------
+    def ref_sha(self, name: str) -> str:
+        """Commit a branch points at, or "" if the branch is absent."""
+        r = self._session.get(
+            f"{API}/repos/{self.owner}/{self.repo}/git/ref/heads/{name}",
+            timeout=TIMEOUT,
+        )
+        if r.status_code == 404:
+            return ""
+        if r.status_code >= 400:
+            raise StoreError(f"Could not read branch `{name}` ({r.status_code}).")
+        return r.json()["object"]["sha"]
+
+    def set_ref(self, name: str, sha: str) -> None:
+        """Point a branch at a commit, creating it if needed.
+
+        Used instead of renaming: a rename deletes the old name first, and the
+        app recreates any missing content branch on its next write. Moving the
+        ref in place means the branch never stops existing.
+        """
+        r = self._session.patch(
+            f"{API}/repos/{self.owner}/{self.repo}/git/refs/heads/{name}",
+            json={"sha": sha, "force": True},
+            timeout=TIMEOUT,
+        )
+        if r.status_code == 404:
+            r = self._session.post(
+                f"{API}/repos/{self.owner}/{self.repo}/git/refs",
+                json={"ref": f"refs/heads/{name}", "sha": sha},
+                timeout=TIMEOUT,
+            )
+        if r.status_code >= 400:
+            raise StoreError(
+                f"Could not point `{name}` at {sha[:7]} ({r.status_code})."
+            )
+
+    def delete_ref(self, name: str) -> None:
+        r = self._session.delete(
+            f"{API}/repos/{self.owner}/{self.repo}/git/refs/heads/{name}",
+            timeout=TIMEOUT,
+        )
+        if r.status_code >= 400 and r.status_code != 404:
+            raise StoreError(f"Could not remove branch `{name}` ({r.status_code}).")
+
     def repo_size_bytes(self) -> int:
         """Repository size as GitHub reports it. Recalculated hourly, so it lags."""
         r = self._session.get(
