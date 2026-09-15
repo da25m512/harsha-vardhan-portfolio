@@ -652,6 +652,13 @@ def _tab_storage(c: dict) -> None:
                 "old one. Files are carried across by reference, so nothing is "
                 "re-uploaded and it takes seconds."
             )
+            if plan.get("stray_files"):
+                st.caption(
+                    f"Includes {plan['stray_files']} file(s) that are neither "
+                    "content nor media — a stale copy of the application code, "
+                    "inherited when this branch was first created off the code "
+                    "branch. Nothing reads it and nothing keeps it current."
+                )
             st.warning(
                 f"**{len(plan['drop'])} unused file(s) — {D.human_size(plan['drop_bytes'])} "
                 "— and the entire previous history will be gone for good.** Every one "

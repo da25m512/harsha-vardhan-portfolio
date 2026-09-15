@@ -517,13 +517,19 @@ def slim_plan(content: dict, tree: list[dict]) -> dict:
     live = referenced_media(content)
     blobs = [t for t in tree if t.get("path")]
 
+    # The app only ever reads data/*.json and serves media/**. Anything else on
+    # this branch is a leftover: the branch is first created off the default
+    # branch, so it inherits a snapshot of the code that nothing then reads and
+    # nothing keeps up to date.
     keep, drop = [], []
     for t in blobs:
         path = t["path"]
-        if path.startswith("media/") and path not in live:
-            drop.append(t)
-        else:
+        is_data = path.startswith("data/")
+        is_media = path.startswith("media/")
+        if is_data or (is_media and path in live):
             keep.append(t)
+        else:
+            drop.append(t)
 
     present = {t["path"] for t in blobs}
     missing = sorted(live - present)
@@ -551,6 +557,10 @@ def slim_plan(content: dict, tree: list[dict]) -> dict:
         "keep_bytes": sum(t.get("bytes", 0) for t in keep),
         "drop_bytes": sum(t.get("bytes", 0) for t in drop),
         "data_files": sum(1 for t in keep if not t["path"].startswith("media/")),
+        "stray_files": sum(
+            1 for t in drop
+            if not t["path"].startswith("media/") and not t["path"].startswith("data/")
+        ),
     }
 
 

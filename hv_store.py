@@ -276,7 +276,17 @@ class GitHubStore(Store):
         return f"{API}/repos/{self.owner}/{self.repo}/contents/{path.lstrip('/')}"
 
     def ensure_branch(self) -> None:
-        """Create the content branch off the default branch if missing."""
+        """Create the content branch if it is missing.
+
+        It is created EMPTY, as a commit with no parents, rather than off the
+        default branch. Branching off the default branch is what used to leave a
+        full copy of the application code sitting on the content branch: nothing
+        ever read it, nothing kept it up to date, and it was served by the CDN
+        alongside the media. Only data/ and media/ belong here.
+
+        If the empty-branch route fails for any reason, it falls back to the old
+        behaviour -- saving the owner's work matters more than a tidy branch.
+        """
         if self._branch_ready:
             return
         r = self._session.get(
@@ -286,6 +296,38 @@ class GitHubStore(Store):
         if r.status_code == 200:
             self._branch_ready = True
             return
+
+        note = (
+            "This branch holds site content only: data/ and media/.\n"
+            "The application code lives on the default branch.\n"
+        )
+        try:
+            tree = self._session.post(
+                f"{API}/repos/{self.owner}/{self.repo}/git/trees",
+                json={"tree": [{"path": "README.md", "mode": "100644",
+                                "type": "blob", "content": note}]},
+                timeout=TIMEOUT,
+            )
+            tree.raise_for_status()
+            commit = self._session.post(
+                f"{API}/repos/{self.owner}/{self.repo}/git/commits",
+                json={"message": "content: start the content branch",
+                      "tree": tree.json()["sha"], "parents": []},
+                timeout=TIMEOUT,
+            )
+            commit.raise_for_status()
+            made = self._session.post(
+                f"{API}/repos/{self.owner}/{self.repo}/git/refs",
+                json={"ref": f"refs/heads/{self.branch}",
+                      "sha": commit.json()["sha"]},
+                timeout=TIMEOUT,
+            )
+            if made.status_code < 400:
+                self._branch_ready = True
+                return
+        except Exception:
+            made = None   # fall through to branching off the default branch
+
         repo = self._session.get(
             f"{API}/repos/{self.owner}/{self.repo}", timeout=TIMEOUT
         )
@@ -306,10 +348,12 @@ class GitHubStore(Store):
             raise StoreError(
                 f"The token cannot create the `{self.branch}` branch (403). Either set "
                 "its **Contents** permission to **Read and write**, or create a branch "
-                f"named `{self.branch}` by hand in GitHub — the app will use it."
+                f"called `{self.branch}` by hand once."
             )
-        if made.status_code not in (200, 201, 422):
-            raise StoreError(f"Could not create branch: {made.status_code} {made.text[:200]}")
+        if made.status_code >= 400 and made.status_code != 422:
+            raise StoreError(
+                f"Could not create the `{self.branch}` branch ({made.status_code})."
+            )
         self._branch_ready = True
 
     def check(self) -> tuple[bool, str]:
