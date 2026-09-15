@@ -310,7 +310,7 @@ def mark_posted() -> None:
 # YouTube refuses to embed Private videos anywhere — that is a YouTube rule,
 # not something a site can work around. Unlisted videos embed normally. Both
 # platforms expose an oEmbed endpoint that tells us which case we are in, so
-# the director finds out while editing instead of via a dead player.
+# the owner finds out while editing instead of via a dead player.
 PROBE_TIMEOUT = 8
 
 

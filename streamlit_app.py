@@ -62,7 +62,7 @@ def main() -> None:
     view = (st.query_params.get("view") or "").lower()
 
     # Admin is reached only at ?view=admin. Staying logged in does not trap
-    # the director inside the console -- "Public site" clears the parameter.
+    # the owner inside the console -- "Public site" clears the parameter.
     if view == "admin":
         if admin.login_gate():
             admin.render(content)

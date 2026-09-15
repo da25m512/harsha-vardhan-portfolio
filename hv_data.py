@@ -16,13 +16,13 @@ GALLERY_PATH = "data/gallery.json"
 PRESS_PATH = "data/press.json"
 MESSAGES_PATH = "data/messages.json"
 
-DIRECTOR_NAME = "Marothu Harsha Vardhan"
+OWNER_NAME = "Marothu Harsha Vardhan"
 
 DEFAULT_SITE: dict[str, Any] = {
-    "name": DIRECTOR_NAME,
+    "name": OWNER_NAME,
     "short_name": "Harsha Vardhan",
-    "eyebrow": "Director · Writer",
-    "roles": ["Director", "Writer", "Storyteller", "Visual Thinker"],
+    "eyebrow": "Portfolio",
+    "roles": ["Storyteller", "Visual Thinker"],
     "tagline": "Building a body of work, one frame at a time.",
     "location": "India",
     "available": True,
@@ -34,7 +34,7 @@ DEFAULT_SITE: dict[str, Any] = {
         "story gets written down as it happens."
     ),
     "bio": (
-        "Marothu Harsha Vardhan is an emerging director whose work is driven by "
+        "Marothu Harsha Vardhan is an emerging artist whose work is driven by "
         "character, silence, and the things people don't say out loud. He is "
         "currently developing his first slate of independent projects."
     ),
@@ -80,7 +80,7 @@ DEFAULT_PROJECT: dict[str, Any] = {
     "title": "",
     "year": "",
     "category": "Short Film",
-    "role": "Director",
+    "role": "",
     "status": "Released",
     "runtime": "",
     "ratio": "",

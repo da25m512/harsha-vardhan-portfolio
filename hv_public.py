@@ -143,8 +143,8 @@ _CLOSE = "    </div>\n  </div></div>\n</section>"
 # Hero
 # --------------------------------------------------------------------------
 def _hero(site: dict) -> None:
-    name = str(site.get("name") or D.DIRECTOR_NAME).strip()
-    words = [w for w in name.split() if w] or [D.DIRECTOR_NAME]
+    name = str(site.get("name") or D.OWNER_NAME).strip()
+    words = [w for w in name.split() if w] or [D.OWNER_NAME]
     # One word per line, up to four; the closing word is drawn hollow so the
     # stack reads as a poster rather than a paragraph.
     if len(words) > 4:
@@ -194,6 +194,13 @@ def _hero(site: dict) -> None:
         if mail
         else ""
     )
+    roles_txt = " / ".join(r for r in (site.get("roles") or []) if str(r).strip())
+    discipline = (
+        f'<div><div class="hv-mk">Discipline</div>'
+        f'<div class="hv-mv">{esc(roles_txt)}</div></div>'
+        if roles_txt
+        else ""
+    )
 
     _md(
         f"""
@@ -201,15 +208,14 @@ def _hero(site: dict) -> None:
 <header class="hv-hero" id="top">
   {bg}
   <div class="hv-hero-top">
-    <span class="hv-mono">{esc(site.get('eyebrow') or 'Director')}</span>
+    <span class="hv-mono">{esc(site.get('eyebrow') or '')}</span>
     <span class="hv-mono">{esc(site.get('location') or '')}</span>
   </div>
   <div class="hv-hero-inner">
     <h1 class="hv-name hv-in">{name_html}</h1>
     <p class="hv-tagline hv-in">{esc(site.get('tagline') or '')}</p>
     <div class="hv-strip-meta hv-in">
-      <div><div class="hv-mk">Discipline</div>
-        <div class="hv-mv">{esc(' / '.join(site.get('roles') or []) or 'Director')}</div></div>
+      {discipline}
       {avail}
       {email_block}
       <div style="margin-left:auto"><div class="hv-mk">Index</div>
@@ -221,7 +227,9 @@ def _hero(site: dict) -> None:
 
 
 def _marquee(site: dict) -> None:
-    roles = [r for r in (site.get("roles") or []) if str(r).strip()] or ["Director"]
+    roles = [r for r in (site.get("roles") or []) if str(r).strip()]
+    if not roles:
+        return
     run = "".join(f"<span>{esc(r)}</span>" for r in roles)
     _md(f'<div class="hv-marquee" aria-hidden="true"><div class="hv-marquee-track">{run*4}</div></div>')
 
@@ -477,7 +485,7 @@ def _guestbook(site: dict, messages: list[dict], reel: str) -> None:
         _open(reel, [("Sec", "Guestbook"), ("Notes", str(len(shown))), ("Login", "Not required")],
               _title(site["section_titles"]["guestbook"]), "guestbook")
         + '<p class="hv-p hv-rise">No account, no login. Leave a note, a question or an idea '
-        "&mdash; it goes straight to the director.</p>"
+        "&mdash; it comes straight to me.</p>"
         + "    </div>\n  </div></div>"
     )
 

@@ -1,4 +1,4 @@
-"""Password-protected admin console. Everything the director can change."""
+"""Password-protected admin console. Everything the owner can change."""
 from __future__ import annotations
 
 import hashlib
@@ -133,7 +133,7 @@ def _probe(url: str) -> tuple[str, str]:
 
 
 def _link_status(url: str) -> None:
-    """Tell the director straight away whether a link will actually play."""
+    """Tell the owner straight away whether a link will actually play."""
     if not (url or "").strip():
         return
     with st.spinner("Checking the link…"):
