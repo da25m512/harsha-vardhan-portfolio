@@ -17,7 +17,7 @@
   "hero_image": "",
   "hero_video": "https://cdn.jsdelivr.net/gh/da25m512/harsha-vardhan-portfolio@content/media/hero/1789472060-timeline-1-1-1-1.mp4",
   "portrait": "",
-  "showreel_url": "https://youtu.be/PN9HMZKnsdc?si=iyy2ScwdPybdqDM9",
+  "showreel_url": "https://youtu.be/nQpCcaWWgTg?si=sLiEICCxOIDFx9xx",
   "showreel_file": "",
   "showreel_caption": "",
   "email": "harshamarothu3d@gmail.com",
@@ -26,6 +26,7 @@
   "accent": "#3de9c1",
   "accent_2": "#E4813F",
   "grain": true,
+  "cache_hero": true,
   "sections": {
     "statement": true,
     "work": true,
@@ -47,5 +48,5 @@
   "guestbook_open": true,
   "guestbook_moderated": true,
   "footer_note": "Made with intention.",
-  "updated_at": "2026-09-15 11:52"
+  "updated_at": "2026-09-15 12:00"
 }
