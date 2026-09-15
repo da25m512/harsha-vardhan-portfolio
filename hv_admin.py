@@ -304,55 +304,6 @@ def _recount() -> None:
         fn()
 
 
-def _run_cleanup(paths: list[str], expected_live: set[str]) -> None:
-    """Delete reviewed orphans, re-checking every path against fresh content.
-
-    The outcome is parked in session state and shown after the rerun, so the
-    report survives the refresh instead of flashing past.
-    """
-    D.clear_cache()
-    fresh = D.load_content()
-    allowed, refused = D.orphan_delete_plan(fresh, paths, expected_live)
-    if not allowed:
-        why = refused[0][1] if refused else "nothing was eligible"
-        st.session_state["_hv_cleanup"] = {"blocked": why, "refused": len(refused)}
-        st.rerun()
-
-    bar = st.progress(0.0, text="Deleting…")
-
-    def tick(frac: float, path: str) -> None:
-        bar.progress(min(frac, 1.0), text=f"Deleting {path.split('/')[-1]}…")
-
-    deleted, failed = D.delete_media(allowed, progress=tick)
-    bar.empty()
-    st.session_state["_hv_cleanup"] = {
-        "deleted": len(deleted),
-        "failed": failed,
-        "kept": len(refused),
-    }
-    st.session_state.pop("hv_orphan_confirm", None)
-    _recount()
-    st.rerun()
-
-
-def _cleanup_report() -> None:
-    out = st.session_state.pop("_hv_cleanup", None)
-    if not out:
-        return
-    if out.get("blocked"):
-        st.error(
-            f"Nothing was deleted — {out['blocked']}. Press Recount and try again.",
-            icon="🛑",
-        )
-        return
-    if out["deleted"]:
-        st.success(f"Deleted {out['deleted']} unused file(s).", icon="🧹")
-    if out.get("kept"):
-        st.info(f"{out['kept']} file(s) were skipped because they are in use.", icon="🛡️")
-    for path, err in out.get("failed", []):
-        st.error(f"{path.split('/')[-1]}: {err}", icon="🚫")
-
-
 def _bar(live: int, orphan: int) -> str:
     total = live + orphan
     if total <= 0:
@@ -380,8 +331,6 @@ def _tab_storage(c: dict) -> None:
             icon="ℹ️",
         )
         return
-
-    _cleanup_report()
 
     if st.button("↻ Recount", help="Re-reads the file list from GitHub."):
         _recount()
@@ -475,35 +424,6 @@ def _tab_storage(c: dict) -> None:
             "so they will not load: " + ", ".join(m.split("/")[-1] for m in r["missing"][:5]),
             icon="🔗",
         )
-
-    # ---- clearing out the orphans ---------------------------------------
-    orphans = [x for x in r["rows"] if not x["used"]]
-    if orphans:
-        st.subheader("Clear out the unused files")
-        st.caption(
-            f"**{len(orphans)} files ({D.human_size(r['orphan_bytes'])})** are not "
-            "linked from anywhere on the site. Deleting them tidies the file list "
-            "and stops the CDN serving them. It will **not** shrink the repository "
-            "— git keeps every version that was ever committed, so these stay "
-            "recoverable from the history."
-        )
-        with st.expander(f"Review the {len(orphans)} files"):
-            st.dataframe(
-                [
-                    {"File": x["path"].split("/")[-1],
-                     "Folder": x["folder"],
-                     "Size": D.human_size(x["bytes"])}
-                    for x in orphans
-                ],
-                hide_index=True,
-                width="stretch",
-            )
-        confirm = st.checkbox(
-            f"I have reviewed these {len(orphans)} files and want them deleted",
-            key="hv_orphan_confirm",
-        )
-        if st.button("🧹 Delete the unused files", type="primary", disabled=not confirm):
-            _run_cleanup([x["path"] for x in orphans], D.referenced_media(c))
 
     # ---- the honest part ------------------------------------------------
     with st.expander("Why orphaned files stay, and what the limits are"):
