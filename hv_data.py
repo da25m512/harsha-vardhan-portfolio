@@ -417,29 +417,31 @@ def _media_path(url: str) -> str:
 
 
 def referenced_media(content: dict) -> set[str]:
-    """Every media path the site still points at, across all content files."""
-    site = content.get("site") or {}
+    """Every media path anything in the content points at.
+
+    This walks the whole content structure instead of checking a list of known
+    fields. Enumerating fields is how a file gets lost: `portrait` is an
+    uploadable field that an earlier version of this function never looked at,
+    so a portrait image would have been classed as unused and dropped. Walking
+    everything means a field added in future is covered the day it is added.
+
+    Anything that is not our own storage resolves to "" and is ignored, so a
+    YouTube or Vimeo link costs nothing here.
+    """
     out: set[str] = set()
 
-    def add(u) -> None:
-        if p := _media_path(u):
-            out.add(p)
+    def walk(node: Any) -> None:
+        if isinstance(node, str):
+            if path := _media_path(node):
+                out.add(path)
+        elif isinstance(node, dict):
+            for value in node.values():
+                walk(value)
+        elif isinstance(node, (list, tuple, set)):
+            for value in node:
+                walk(value)
 
-    for key in ("hero_image", "hero_video", "showreel_file"):
-        add(site.get(key))
-
-    for p in content.get("projects") or []:
-        add(p.get("poster"))
-        add(p.get("video_url"))
-        add(p.get("video_file"))
-        for g in p.get("gallery") or []:
-            add(g)
-        for v in p.get("videos") or []:
-            add(v.get("url") if isinstance(v, dict) else v)
-
-    for g in content.get("gallery") or []:
-        add(g.get("url") if isinstance(g, dict) else g)
-
+    walk(content)
     return out
 
 

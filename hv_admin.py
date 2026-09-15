@@ -322,168 +322,97 @@ def _repo_size(_version: int) -> int:
         return 0
 
 
-def _swap_in(slim: str, backup: str, plan: dict) -> None:
-    """Make the slimmed branch live, keeping the old one as a backup.
+def _slim_everything(plan: dict) -> None:
+    """Rebuild the live branch without its history, in one go.
 
-    Deliberately not a rename. A rename removes the old name first, and the app
-    recreates a missing content branch on its next write -- so there would be a
-    moment where a save could resurrect an empty `content`. Moving the ref in
-    place means the live branch never stops existing, and the swap is instant.
+    Sequence, with a check after every step that could lose something:
+      1. build a temporary orphan branch holding only the keepers
+      2. verify it file by file against the plan
+      3. remember where the live branch is, then move it onto the new commit
+      4. verify the live branch the same way
+      5. on any mismatch put the live branch straight back and stop
+      6. remove the temporary branch, leaving the old commit unreferenced
 
-    Order matters: the backup is written *before* the live branch moves, so the
-    old commit is never unreferenced even for an instant. If the branch does not
-    verify afterwards, it is put straight back.
-
-    Every exit runs through a single rerun at the end. st.rerun() works by
-    raising, so calling it inside the try block would have it caught by the
-    handler below and reported as a failure.
+    st.rerun() works by raising, so it is called once at the end, outside the
+    try -- inside, the handler would swallow it and report a failure.
     """
     store = D.get_store()
     live = store.branch
+    temp = "content-rebuild"
+    old_sha = ""
     try:
-        problems = D.verify_rebuild(plan, store.full_tree(slim))
+        old_sha = store.ref_sha(live)
+        if not old_sha:
+            raise StoreError(f"Branch `{live}` not found.")
+
+        commit = store.build_orphan_branch(
+            temp, plan["keep"],
+            f"content: rebuild without {len(plan['drop'])} unused file(s)",
+        )
+        problems = D.verify_rebuild(plan, store.full_tree(temp))
         if problems:
+            store.delete_ref(temp)
             outcome = {"refused": "; ".join(problems[:5])}
         else:
-            old_sha, new_sha = store.ref_sha(live), store.ref_sha(slim)
-            if not old_sha or not new_sha:
-                outcome = {"refused": "one of the branches no longer exists"}
+            store.set_ref(live, commit)
+            broke = D.verify_rebuild(plan, store.full_tree(live))
+            if broke:
+                store.set_ref(live, old_sha)        # put it back untouched
+                store.delete_ref(temp)
+                outcome = {"rolled_back": "; ".join(broke[:5])}
             else:
-                store.set_ref(backup, old_sha)      # safety net first
-                store.set_ref(live, new_sha)        # then move the live branch
-                broke = D.verify_rebuild(plan, store.full_tree(live))
-                if broke:
-                    store.set_ref(live, old_sha)    # put it back, untouched
-                    outcome = {"rolled_back": "; ".join(broke[:5]), "backup": backup}
-                else:
-                    store.delete_ref(slim)
-                    outcome = {
-                        "ok": True, "live": live, "backup": backup,
-                        "old": old_sha[:7], "new": new_sha[:7],
-                        "freed": plan["drop_bytes"], "dropped": len(plan["drop"]),
-                    }
+                store.delete_ref(temp)
+                outcome = {
+                    "ok": True, "live": live, "old": old_sha[:7],
+                    "new": commit[:7], "kept": len(plan["keep"]),
+                    "dropped": len(plan["drop"]), "freed": plan["drop_bytes"],
+                }
     except Exception as exc:
         outcome = {"error": str(exc)}
 
     if outcome.get("ok"):
         D.bump()
         _recount()
-    _slim_state()["swap"] = outcome
-    st.session_state.pop("hv_swap_confirm", None)
+    _slim_state()["run"] = outcome
     st.rerun()
 
 
-def _swap_result() -> None:
-    out = _slim_state().get("swap")
+def _slim_report() -> None:
+    out = _slim_state().get("run")
     if not out:
         return
     if out.get("refused"):
         st.error(
-            "Swap refused — the new branch did not verify, so nothing was "
-            f"changed: {out['refused']}",
+            "Stopped before changing anything — the rebuilt branch did not "
+            f"match: {out['refused']}",
             icon="🛑",
         )
-        return
-    if out.get("rolled_back"):
+    elif out.get("rolled_back"):
         st.error(
-            f"The swap was undone automatically. `{out['backup']}` holds the "
-            f"original and your live branch was put straight back, so the site "
-            f"is as it was. Reason: {out['rolled_back']}",
+            "Undone automatically. Your branch was put straight back, so the "
+            f"site is exactly as it was. Reason: {out['rolled_back']}",
             icon="↩️",
         )
-        return
-    if out.get("error"):
-        st.error(f"The swap did not complete: {out['error']}", icon="🚫")
-        return
-
-    st.success(
-        f"`{out['live']}` now serves the slimmed content ({out['old']} → "
-        f"{out['new']}), verified file by file. The previous branch is kept as "
-        f"`{out['backup']}`, so this is fully reversible.",
-        icon="✅",
-    )
-    st.markdown(
-        "**Check the public site now** — open it, look at every image and video.\n\n"
-        f"- Something wrong? Point `{out['live']}` back at `{out['backup']}` and "
-        "you are exactly where you started.\n"
-        f"- All good? Delete `{out['backup']}` on GitHub (**Branches → 🗑**). "
-        f"**That is the step that frees the {D.human_size(out['freed'])}** — until "
-        "then the old files are still referenced by the backup, and the repository "
-        "will not shrink."
-    )
+    elif out.get("error"):
+        st.error(f"Nothing was changed: {out['error']}", icon="🚫")
+    else:
+        st.success(
+            f"Done. `{out['live']}` rebuilt ({out['old']} → {out['new']}) with "
+            f"all {out['kept']} files the site uses, verified one by one. "
+            f"{out['dropped']} unused file(s) and the whole previous history are "
+            "gone.",
+            icon="✅",
+        )
+        st.caption(
+            f"GitHub frees the {D.human_size(out['freed'])} when its garbage "
+            "collection runs, so the repository size above can take a while to "
+            "drop. Have a look at the public site — every image and video was "
+            "checked, but it is worth seeing for yourself."
+        )
 
 
 def _slim_state() -> dict:
     return st.session_state.setdefault("_hv_slim", {})
-
-
-def _build_slim(name: str, plan: dict) -> None:
-    """Create the slimmed branch, then prove it carries every keeper.
-
-    Verification is not optional: the new branch is read back and compared by
-    blob SHA against the plan, so the owner is told it worked only if every
-    file the site needs is genuinely there.
-    """
-    store = D.get_store()
-    try:
-        with st.spinner(f"Building `{name}`…"):
-            commit = store.build_orphan_branch(
-                name, plan["keep"],
-                f"content: rebuild without {len(plan['drop'])} unused file(s)",
-            )
-            rebuilt = store.full_tree(name)
-    except Exception as exc:
-        _slim_state()["result"] = {"error": str(exc)}
-        st.rerun()
-
-    problems = D.verify_rebuild(plan, rebuilt)
-    _slim_state()["result"] = {
-        "branch": name,
-        "commit": commit[:7],
-        "kept": len(plan["keep"]),
-        "dropped": len(plan["drop"]),
-        "saved": plan["drop_bytes"],
-        "problems": problems,
-    }
-    st.session_state.pop("hv_slim_confirm", None)
-    st.rerun()
-
-
-def _slim_result() -> None:
-    out = _slim_state().get("result")
-    if not out:
-        return
-    if out.get("error"):
-        st.error(f"The branch was not built: {out['error']}", icon="🚫")
-        return
-    if out["problems"]:
-        st.error(
-            f"`{out['branch']}` was created but did NOT verify — do not switch to "
-            "it, and do not delete anything. Problems: "
-            + "; ".join(out["problems"][:5]),
-            icon="🛑",
-        )
-        return
-
-    st.success(
-        f"`{out['branch']}` built and verified at commit {out['commit']}. All "
-        f"{out['kept']} files the site needs are present and byte-identical; "
-        f"{out['dropped']} unused file(s) were left behind, which is "
-        f"{D.human_size(out['saved'])} of media plus all of its history.",
-        icon="✅",
-    )
-    st.markdown(
-        "**Your site is still running on the old branch — nothing has changed yet.**\n\n"
-        "When you are ready, and only then:\n\n"
-        f"1. **Manage app → Settings → Secrets**, change `branch` to `{out['branch']}`, save.\n"
-        "2. Wait for the reboot, then **look at the whole site** — every image, every "
-        "video, and the admin console.\n"
-        "3. Only once you are happy, delete the old branch on GitHub "
-        "(**Branches → 🗑**). That is the step that frees the space.\n\n"
-        "If anything looks wrong at step 2, change the secret back and nothing is lost. "
-        "After step 3 GitHub frees the disk when its garbage collection runs, so the "
-        "reported size can take a while to drop."
-    )
 
 
 def _bar(live: int, orphan: int) -> str:
@@ -614,105 +543,66 @@ def _tab_storage(c: dict) -> None:
             icon="🔗",
         )
 
-    # ---- rebuilding the branch without the orphans -----------------------
+    # ---- one-click rebuild ------------------------------------------------
     st.subheader("Reduce the repository size")
-    st.caption(
-        "Deleting files cannot shrink a git repository, because every version "
-        "ever committed stays in the history. The only thing that works is "
-        "rebuilding the branch **without** that history. This makes a brand new "
-        "branch holding your live files and nothing else — it reads the existing "
-        "files by reference, so nothing is re-uploaded and it takes seconds."
-    )
-    st.info(
-        "This button **only creates a new branch**. It does not delete, move or "
-        "change anything you are using now, so your live files cannot be lost by "
-        "pressing it. The old branch stays exactly as it is until you choose to "
-        "remove it yourself, after you have seen the site working.",
-        icon="🛟",
-    )
-
-    target = st.text_input(
-        "Name for the new branch", value="content-slim", key="hv_slim_branch",
-        help="Must be different from the branch the site is using right now.",
-    )
+    _slim_report()
 
     tree, tree_err = _branch_tree(D._version())
     if tree_err:
         st.error(f"Could not read the branch: {tree_err}", icon="🚫")
-    if tree:
+    elif tree:
         plan = D.slim_plan(c, tree)
         if plan["blocked"]:
             st.error(
-                f"Rebuild refused — {plan['blocked']}. Nothing has been changed.",
+                f"Not safe to rebuild — {plan['blocked']}. Nothing has been changed.",
                 icon="🛑",
             )
             if plan["missing"]:
                 st.caption("Referenced but not stored: "
                            + ", ".join(m.split("/")[-1] for m in plan["missing"][:8]))
-        else:
-            a, b = st.columns(2)
-            a.metric("Would be kept", D.human_size(plan["keep_bytes"]),
-                     delta=f"{len(plan['keep'])} files", delta_color="off")
-            b.metric("Would be dropped", D.human_size(plan["drop_bytes"]),
-                     delta=f"{len(plan['drop'])} files", delta_color="off")
-            st.caption(
-                f"Kept: {plan['data_files']} content file(s) plus every image and "
-                f"video the site links to. Dropped: only media nothing points at."
+        elif not plan["drop"]:
+            st.success(
+                "Nothing to remove — every stored file is in use. The repository "
+                "is already as small as this can make it.",
+                icon="✨",
             )
-            with st.expander(f"Everything that would be kept ({len(plan['keep'])})"):
+        else:
+            st.caption(
+                "Deleting files cannot shrink a git repository: every version ever "
+                "committed stays in the history. This rebuilds the branch with only "
+                "the files your site uses and no history behind them, then drops the "
+                "old one. Files are carried across by reference, so nothing is "
+                "re-uploaded and it takes seconds."
+            )
+            st.warning(
+                f"**{len(plan['drop'])} unused file(s) — {D.human_size(plan['drop_bytes'])} "
+                "— and the entire previous history will be gone for good.** Every one "
+                f"of the {len(plan['keep'])} files your site uses is carried over and "
+                "checked afterwards; if a single one is missing the whole thing is put "
+                "straight back.",
+                icon="⚠️",
+            )
+            with st.expander(f"Kept: {len(plan['keep'])} files "
+                             f"({D.human_size(plan['keep_bytes'])})"):
                 st.dataframe(
                     [{"File": t["path"], "Size": D.human_size(t["bytes"])}
                      for t in plan["keep"]],
                     hide_index=True, width="stretch",
                 )
-            with st.expander(f"Everything that would be dropped ({len(plan['drop'])})"):
+            with st.expander(f"Removed: {len(plan['drop'])} files "
+                             f"({D.human_size(plan['drop_bytes'])})"):
                 st.dataframe(
                     [{"File": t["path"], "Size": D.human_size(t["bytes"])}
                      for t in sorted(plan["drop"], key=lambda t: -t["bytes"])],
                     hide_index=True, width="stretch",
                 )
+            if st.button(
+                f"🧹 Remove {len(plan['drop'])} unused file(s) and free "
+                f"{D.human_size(plan['drop_bytes'])}",
+                type="primary",
+            ):
+                _slim_everything(plan)
 
-            same = target.strip() == getattr(D.get_store(), "branch", "")
-            if same:
-                st.error("Pick a different name — that is the branch in use.", icon="🚫")
-            agreed = st.checkbox(
-                "I have checked the kept list and want the new branch built",
-                key="hv_slim_confirm",
-            )
-            if st.button("🌱 Build the new branch", type="primary",
-                         disabled=not agreed or same or not target.strip()):
-                _build_slim(target.strip(), plan)
-
-            # ---- step two: make it live -----------------------------------
-            existing = ""
-            try:
-                existing = D.get_store().ref_sha(target.strip()) if target.strip() else ""
-            except Exception:
-                existing = ""
-            if existing:
-                st.divider()
-                st.markdown(f"**`{target.strip()}` already exists.** Make it live?")
-                backup_name = st.text_input(
-                    "Keep the current branch under this name",
-                    value="content-backup", key="hv_backup_name",
-                    help="Your existing content branch is preserved here, so the "
-                         "swap can be undone at any time.",
-                )
-                st.caption(
-                    f"`{D.get_store().branch}` will be pointed at the slimmed "
-                    "commit and the current one saved as the backup. The live "
-                    "branch is never removed, so the site cannot be left without "
-                    "one, and the swap is checked again afterwards — if anything "
-                    "is missing it is put straight back."
-                )
-                swap_ok = st.checkbox(
-                    "Make the slimmed branch live now", key="hv_swap_confirm")
-                if st.button("🔁 Swap it in", type="primary",
-                             disabled=not swap_ok or not backup_name.strip()):
-                    _swap_in(target.strip(), backup_name.strip(), plan)
-
-    _slim_result()
-    _swap_result()
 
     # ---- the honest part ------------------------------------------------
     with st.expander("Why orphaned files stay, and what the limits are"):
