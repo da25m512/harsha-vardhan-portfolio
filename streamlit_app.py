@@ -1,7 +1,7 @@
 """
-Marothu Harsha Vardhan — Director
-=================================
-A two-role portfolio platform.
+Marothu Harsha Vardhan
+======================
+Portfolio and showreel.
 
   * Public  — anyone, no login: read everything, leave a message.
   * Admin   — password protected at ?view=admin: edit every word,
@@ -19,7 +19,7 @@ st.set_page_config(
     page_icon="🎬",
     layout="wide",
     initial_sidebar_state="collapsed",
-    menu_items={"About": "Portfolio of Marothu Harsha Vardhan."},
+    menu_items={"About": "Portfolio and showreel of Marothu Harsha Vardhan."},
 )
 
 import hv_admin as admin

@@ -1,11 +1,11 @@
-# Marothu Harsha Vardhan 
+# Marothu Harsha Vardhan
 
-A portfolio platform with two roles:
+Portfolio and showreel — films, music videos, animation and visual work.
 
-| Role | How you get in | What you can do |
+| Who | How you get in | What you can do |
 | --- | --- | --- |
 | **Visitor** | Just open the site. No login, ever. | Read everything, browse the work, watch the reel, leave a message |
-| **Director (admin)** | Add `?view=admin` to the URL, enter the password | Edit every word, image, video and setting on the site |
+| **Owner (admin)** | Add `?view=admin` to the URL, enter the password | Edit every word, image, video and setting on the site |
 
 Nothing is hard-coded. Every piece of text, every photo, every video and
 every section heading is editable from the admin console, and everything is
