@@ -153,26 +153,45 @@ class Store:
         return r.json()["object"]["sha"]
 
     def set_ref(self, name: str, sha: str) -> None:
-        """Point a branch at a commit, creating it if needed.
+        """Point a branch at a commit, creating it if it is not there yet.
 
         Used instead of renaming: a rename deletes the old name first, and the
-        app recreates any missing content branch on its next write. Moving the
-        ref in place means the branch never stops existing.
+        app recreates a missing content branch on its next write, so the branch
+        never stops existing this way.
+
+        Creating and moving are different endpoints, and GitHub does not answer
+        404 for a reference that is absent -- updating one returns 422, the same
+        code as a genuine validation failure. So which call to make is decided by
+        looking first, and each is still prepared for the other to be right, in
+        case the branch appears or vanishes in between.
         """
-        r = self._session.patch(
-            f"{API}/repos/{self.owner}/{self.repo}/git/refs/heads/{name}",
-            json={"sha": sha, "force": True},
-            timeout=TIMEOUT,
-        )
-        if r.status_code == 404:
-            r = self._session.post(
-                f"{API}/repos/{self.owner}/{self.repo}/git/refs",
-                json={"ref": f"refs/heads/{name}", "sha": sha},
+        create_url = f"{API}/repos/{self.owner}/{self.repo}/git/refs"
+        update_url = f"{API}/repos/{self.owner}/{self.repo}/git/refs/heads/{name}"
+
+        def _create():
+            return self._session.post(
+                create_url, json={"ref": f"refs/heads/{name}", "sha": sha},
                 timeout=TIMEOUT,
             )
+
+        def _update():
+            return self._session.patch(
+                update_url, json={"sha": sha, "force": True}, timeout=TIMEOUT,
+            )
+
+        exists = bool(self.ref_sha(name))
+        r = _update() if exists else _create()
         if r.status_code >= 400:
+            r = _create() if exists else _update()   # the other one, just in case
+        if r.status_code >= 400:
+            detail = ""
+            try:
+                detail = str(r.json().get("message") or "")
+            except Exception:
+                detail = (r.text or "")[:120]
             raise StoreError(
-                f"Could not point `{name}` at {sha[:7]} ({r.status_code})."
+                f"Could not point `{name}` at {sha[:7]} ({r.status_code})"
+                + (f": {detail}" if detail else "")
             )
 
     def delete_ref(self, name: str) -> None:
