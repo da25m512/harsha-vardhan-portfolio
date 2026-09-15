@@ -194,7 +194,30 @@ class Store:
                 + (f": {detail}" if detail else "")
             )
 
+    def list_branches(self) -> list[dict]:
+        """Every branch as {name, sha}."""
+        r = self._session.get(
+            f"{API}/repos/{self.owner}/{self.repo}/branches",
+            params={"per_page": "100"},
+            timeout=TIMEOUT,
+        )
+        if r.status_code >= 400:
+            raise StoreError(f"Could not list branches ({r.status_code}).")
+        return [{"name": b["name"], "sha": b["commit"]["sha"]} for b in r.json()]
+
+    def default_branch(self) -> str:
+        r = self._session.get(
+            f"{API}/repos/{self.owner}/{self.repo}", timeout=TIMEOUT
+        )
+        if r.status_code >= 400:
+            return "main"
+        return str(r.json().get("default_branch") or "main")
+
     def delete_ref(self, name: str) -> None:
+        if name == self.branch:
+            raise StoreError(
+                f"Refusing to delete `{name}` -- the site is served from it."
+            )
         r = self._session.delete(
             f"{API}/repos/{self.owner}/{self.repo}/git/refs/heads/{name}",
             timeout=TIMEOUT,

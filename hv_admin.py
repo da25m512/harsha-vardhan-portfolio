@@ -299,7 +299,7 @@ def _media_listing(_version: int) -> tuple[list[dict], str]:
 
 
 def _recount() -> None:
-    for cached in (_media_listing, _branch_tree, _repo_size):
+    for cached in (_media_listing, _branch_tree, _repo_size, _spare_branches):
         fn = getattr(cached, "clear", None)
         if callable(fn):
             fn()
@@ -320,6 +320,84 @@ def _repo_size(_version: int) -> int:
         return D.get_store().repo_size_bytes()
     except Exception:
         return 0
+
+
+@st.cache_data(ttl=120, show_spinner=False)
+def _spare_branches(_version: int) -> tuple[list[dict], str]:
+    """Branches that are neither the live content branch nor the code branch."""
+    try:
+        store = D.get_store()
+        keep = {store.branch, store.default_branch()}
+        out = []
+        for b in store.list_branches():
+            if b["name"] in keep:
+                continue
+            try:
+                blobs = store.full_tree(b["name"])
+            except Exception:
+                blobs = []
+            out.append({
+                "name": b["name"],
+                "files": len(blobs),
+                "bytes": sum(t.get("bytes", 0) for t in blobs),
+            })
+        return out, ""
+    except Exception as exc:
+        return [], str(exc)
+
+
+def _drop_branch(name: str) -> None:
+    """Remove a leftover branch.
+
+    The rendered list already excludes the live and default branches, but that
+    list was built a moment ago and the button carries only a name. Both are
+    checked again here, so a stale page cannot delete something load-bearing.
+    """
+    try:
+        store = D.get_store()
+        protected = {store.branch, store.default_branch()}
+        if name in protected:
+            raise StoreError(f"`{name}` is in use and cannot be deleted here.")
+        store.delete_ref(name)
+        _slim_state()["branch"] = {"gone": name}
+    except Exception as exc:
+        _slim_state()["branch"] = {"error": str(exc)}
+    _recount()
+    st.rerun()
+
+
+def _old_branches(c: dict) -> None:
+    """Leftover branches keep their files alive, so the repo cannot shrink."""
+    spare, err = _spare_branches(D._version())
+    if err or not spare:
+        return
+
+    st.subheader("Old branches")
+    st.caption(
+        "A branch keeps everything it points at, so while these exist the "
+        "repository cannot get smaller — even though nothing here is served to "
+        "your site. Removing one is what actually frees its files."
+    )
+    live = getattr(D.get_store(), "branch", "content")
+    for b in spare:
+        row = st.columns([3, 2, 2])
+        row[0].markdown(f"**`{b['name']}`**")
+        row[1].caption(f"{b['files']} files · {D.human_size(b['bytes'])}")
+        if row[2].button(f"🗑 Delete", key=f"delbr_{b['name']}",
+                         help=f"Removes `{b['name']}`. Your live branch "
+                              f"`{live}` is untouched."):
+            _drop_branch(b["name"])
+
+    out = _slim_state().pop("branch", None)
+    if out and out.get("gone"):
+        st.success(
+            f"`{out['gone']}` removed. Its files are no longer referenced by "
+            "anything — GitHub frees the space when its garbage collection runs, "
+            "so the size above may take a while to fall.",
+            icon="🧹",
+        )
+    elif out and out.get("error"):
+        st.error(out["error"], icon="🚫")
 
 
 def _slim_everything(plan: dict) -> None:
@@ -603,6 +681,8 @@ def _tab_storage(c: dict) -> None:
             ):
                 _slim_everything(plan)
 
+
+    _old_branches(c)
 
     # ---- the honest part ------------------------------------------------
     with st.expander("Why orphaned files stay, and what the limits are"):
