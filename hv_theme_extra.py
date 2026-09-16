@@ -187,19 +187,26 @@ a { color: var(--accent); }
 .hv-tool-mark {
   height:46px; width:100%; display:grid; place-items:center;
 }
-/* Every logo is flattened to a single pale silhouette rather than shown in its
-   own colours. Vendors mostly ship black-on-transparent artwork, which on this
-   near-black ground simply disappears -- greying it back only made it darker.
-   brightness(0) invert(1) throws away the original colour entirely, so black,
-   white and full-colour marks all come out the same weight, and a wall of
-   clashing brand palettes reads as one set instead of a jumble. Hover just
-   brightens; revealing true colour would hide the black ones again. */
+/* Each logo sits on its own pale tile instead of being recoloured.
+   Two shapes of file arrive here and CSS cannot tell them apart: artwork on a
+   transparent background, and artwork with the background baked in (every JPEG,
+   and most things saved off a search page). Filtering the pixels breaks one or
+   the other -- greying made dark-on-transparent vanish into the page, and
+   forcing a silhouette turned every baked-in background into a solid white
+   block. A light tile needs no filter: dark marks read against it, and a baked
+   white background simply merges into it -- the tile is pure white for exactly
+   that reason, so no seam shows around artwork that brought its own background.
+   The cost is that a white-only mark on transparency has nothing to sit against;
+   the dark variant every vendor also ships is the one to upload. Greyscale at
+   rest keeps a wall of clashing brand palettes calm; hover restores the real
+   colours. */
 .hv-tool-mark img {
-  max-height:46px; max-width:76%; object-fit:contain; display:block;
-  filter: brightness(0) invert(1); opacity:.68;
-  transition: opacity .35s;
+  max-height:44px; max-width:84%; object-fit:contain; display:block;
+  background:#fff; border-radius:3px; padding:5px 7px;
+  filter:grayscale(1); opacity:.86;
+  transition: filter .35s, opacity .35s;
 }
-.hv-tool:hover .hv-tool-mark img { opacity:1; }
+.hv-tool:hover .hv-tool-mark img { filter:none; opacity:1; }
 .hv-tool-word {
   font-family:var(--display); font-weight:900; text-transform:uppercase;
   font-size: clamp(15px,1.5vw,22px); line-height:1.02; letter-spacing:-.01em;
