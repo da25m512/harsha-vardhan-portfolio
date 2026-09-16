@@ -168,13 +168,19 @@ a { color: var(--accent); }
 .st-key-hv_admin [data-testid="stExpander"] { margin-bottom:7px; }
 
 /* ============ Toolkit ============ */
+/* Borders live on the cells, not as gaps over a coloured container: with
+   auto-fill the last row is usually partial, and a container background would
+   show through the empty tail as a grey slab. */
 .hv-tools {
-  display:grid; gap:1px; background:var(--line); border:1px solid var(--line);
+  display:grid; gap:0;
+  border-top:1px solid var(--line); border-left:1px solid var(--line);
   grid-template-columns: repeat(auto-fill, minmax(min(100%,150px), 1fr));
 }
 .hv-tool {
-  background:var(--ink); padding: clamp(18px,2.4vw,28px) 14px;
-  display:flex; flex-direction:column; align-items:center; gap:12px;
+  border-right:1px solid var(--line); border-bottom:1px solid var(--line);
+  padding: clamp(16px,1.8vw,22px) 12px; min-height:104px;
+  display:flex; flex-direction:column; align-items:center;
+  justify-content:center; gap:12px;
   transition: background .35s;
 }
 .hv-tool:hover { background:var(--ink-2); }
@@ -187,14 +193,17 @@ a { color: var(--accent); }
   transition: filter .35s, opacity .35s;
 }
 .hv-tool:hover .hv-tool-mark img { filter:none; opacity:1; }
-.hv-tool-initials {
-  font-family:var(--display); font-weight:900; font-size:30px; line-height:1;
-  color:var(--paper-3); letter-spacing:-.02em; transition:color .35s;
+.hv-tool-word {
+  font-family:var(--display); font-weight:900; text-transform:uppercase;
+  font-size: clamp(15px,1.5vw,22px); line-height:1.02; letter-spacing:-.01em;
+  color:var(--paper-2); text-align:center;
+  overflow-wrap:break-word; word-break:normal; hyphens:none;
+  transition:color .35s;
 }
-.hv-tool:hover .hv-tool-initials { color:var(--accent); }
+.hv-tool:hover .hv-tool-word { color:var(--accent); }
 .hv-tool-name {
   font-family:var(--mono); font-size:10px; letter-spacing:.16em;
   text-transform:uppercase; color:var(--paper-2); text-align:center;
-  overflow-wrap:anywhere;
+  overflow-wrap:break-word; word-break:normal;
 }
 """

@@ -461,15 +461,21 @@ def _software(site: dict, items: list[dict], reel: str) -> None:
         if not name:
             continue
         src = img_src(it.get("url", ""))
-        mark = (
-            f'<img src="{src}" alt="{attr(name)}" loading="lazy">'
-            if src
-            else f'<span class="hv-tool-initials">{esc(name[:2].upper())}</span>'
-        )
-        cells.append(
-            f'<div class="hv-tool"><div class="hv-tool-mark">{mark}</div>'
-            f'<div class="hv-tool-name">{esc(name)}</div></div>'
-        )
+        if src:
+            cells.append(
+                f'<div class="hv-tool">'
+                f'<div class="hv-tool-mark">'
+                f'<img src="{src}" alt="{attr(name)}" loading="lazy"></div>'
+                f'<div class="hv-tool-name">{esc(name)}</div></div>'
+            )
+        else:
+            # No logo: the name IS the mark. Showing initials above the same
+            # name again just says it twice, and two-letter initials collide
+            # (Maya and Marvelous Designer both give "MA").
+            cells.append(
+                f'<div class="hv-tool hv-tool-wordonly">'
+                f'<div class="hv-tool-word">{esc(name)}</div></div>'
+            )
     if not cells:
         _md(head + '<div class="hv-empty-state">Tools appear here.</div>' + _CLOSE)
         return
