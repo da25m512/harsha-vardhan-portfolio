@@ -187,12 +187,19 @@ a { color: var(--accent); }
 .hv-tool-mark {
   height:46px; width:100%; display:grid; place-items:center;
 }
+/* Every logo is flattened to a single pale silhouette rather than shown in its
+   own colours. Vendors mostly ship black-on-transparent artwork, which on this
+   near-black ground simply disappears -- greying it back only made it darker.
+   brightness(0) invert(1) throws away the original colour entirely, so black,
+   white and full-colour marks all come out the same weight, and a wall of
+   clashing brand palettes reads as one set instead of a jumble. Hover just
+   brightens; revealing true colour would hide the black ones again. */
 .hv-tool-mark img {
   max-height:46px; max-width:76%; object-fit:contain; display:block;
-  filter: grayscale(1) brightness(1.7) contrast(.9); opacity:.82;
-  transition: filter .35s, opacity .35s;
+  filter: brightness(0) invert(1); opacity:.68;
+  transition: opacity .35s;
 }
-.hv-tool:hover .hv-tool-mark img { filter:none; opacity:1; }
+.hv-tool:hover .hv-tool-mark img { opacity:1; }
 .hv-tool-word {
   font-family:var(--display); font-weight:900; text-transform:uppercase;
   font-size: clamp(15px,1.5vw,22px); line-height:1.02; letter-spacing:-.01em;
