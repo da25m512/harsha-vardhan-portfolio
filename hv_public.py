@@ -816,11 +816,11 @@ def render(content: dict[str, Any]) -> None:
             or str(site.get("bio") or "").strip()
             or img_src(site.get("portrait", ""))
         ), lambda r: _statement(site, ledger, r)),
-        (sec.get("software", True) and bool(tools),
-         lambda r: _software(site, tools, r)),
         (sec.get("work", True) and bool(published),
          lambda r: _work(site, content["projects"], r)),
         (sec.get("showreel", True) and has_reel, lambda r: _showreel(site, r)),
+        (sec.get("software", True) and bool(tools),
+         lambda r: _software(site, tools, r)),
         (sec.get("timeline", True) and bool(content["timeline"]),
          lambda r: _timeline(site, content["timeline"], r)),
         (sec.get("gallery", True) and bool(stills), lambda r: _gallery(site, stills, r)),
