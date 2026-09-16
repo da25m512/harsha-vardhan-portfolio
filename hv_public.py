@@ -447,6 +447,35 @@ def _timeline(site: dict, items: list[dict], reel: str) -> None:
     _md(head + f'<div class="hv-tl">{body}</div>' + _CLOSE)
 
 
+def _software(site: dict, items: list[dict], reel: str) -> None:
+    """The tools, as a grid of marks with their names.
+
+    A logo is optional: an entry with only a name still reads correctly, as a
+    wordmark set in the display face, so the grid never shows a broken image.
+    """
+    head = _open(reel, [("Sec", "Tools"), ("Count", str(len(items)))],
+                 _title(site["section_titles"]["software"]), "toolkit")
+    cells = []
+    for it in items:
+        name = str(it.get("name") or "").strip()
+        if not name:
+            continue
+        src = img_src(it.get("url", ""))
+        mark = (
+            f'<img src="{src}" alt="{attr(name)}" loading="lazy">'
+            if src
+            else f'<span class="hv-tool-initials">{esc(name[:2].upper())}</span>'
+        )
+        cells.append(
+            f'<div class="hv-tool"><div class="hv-tool-mark">{mark}</div>'
+            f'<div class="hv-tool-name">{esc(name)}</div></div>'
+        )
+    if not cells:
+        _md(head + '<div class="hv-empty-state">Tools appear here.</div>' + _CLOSE)
+        return
+    _md(head + f'<div class="hv-tools hv-rise">{"".join(cells)}</div>' + _CLOSE)
+
+
 def _gallery(site: dict, items: list[dict], reel: str) -> None:
     head = _open(reel, [("Sec", "Stills"), ("Frames", str(len(items)))],
                  _title(site["section_titles"]["gallery"]), "stills")
@@ -753,6 +782,7 @@ def render(content: dict[str, Any]) -> None:
     sec = site.get("sections", {})
     published = [p for p in content["projects"] if p.get("published", True)]
     stills = [g for g in content["gallery"] if img_src(g.get("url", ""))]
+    tools = [t for t in content.get("software") or [] if str(t.get("name") or "").strip()]
     notes = [m for m in content["messages"] if m.get("approved")]
     has_reel = bool(
         embed_src(site.get("showreel_file", ""))[0]
@@ -780,6 +810,8 @@ def render(content: dict[str, Any]) -> None:
             or str(site.get("bio") or "").strip()
             or img_src(site.get("portrait", ""))
         ), lambda r: _statement(site, ledger, r)),
+        (sec.get("software", True) and bool(tools),
+         lambda r: _software(site, tools, r)),
         (sec.get("work", True) and bool(published),
          lambda r: _work(site, content["projects"], r)),
         (sec.get("showreel", True) and has_reel, lambda r: _showreel(site, r)),

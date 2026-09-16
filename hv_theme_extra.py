@@ -166,4 +166,35 @@ a { color: var(--accent); }
   font-size: clamp(18px,1.7vw,25px); margin-top:14px; color: var(--paper);
 }
 .st-key-hv_admin [data-testid="stExpander"] { margin-bottom:7px; }
+
+/* ============ Toolkit ============ */
+.hv-tools {
+  display:grid; gap:1px; background:var(--line); border:1px solid var(--line);
+  grid-template-columns: repeat(auto-fill, minmax(min(100%,150px), 1fr));
+}
+.hv-tool {
+  background:var(--ink); padding: clamp(18px,2.4vw,28px) 14px;
+  display:flex; flex-direction:column; align-items:center; gap:12px;
+  transition: background .35s;
+}
+.hv-tool:hover { background:var(--ink-2); }
+.hv-tool-mark {
+  height:46px; width:100%; display:grid; place-items:center;
+}
+.hv-tool-mark img {
+  max-height:46px; max-width:76%; object-fit:contain; display:block;
+  filter: grayscale(1) brightness(1.7) contrast(.9); opacity:.82;
+  transition: filter .35s, opacity .35s;
+}
+.hv-tool:hover .hv-tool-mark img { filter:none; opacity:1; }
+.hv-tool-initials {
+  font-family:var(--display); font-weight:900; font-size:30px; line-height:1;
+  color:var(--paper-3); letter-spacing:-.02em; transition:color .35s;
+}
+.hv-tool:hover .hv-tool-initials { color:var(--accent); }
+.hv-tool-name {
+  font-family:var(--mono); font-size:10px; letter-spacing:.16em;
+  text-transform:uppercase; color:var(--paper-2); text-align:center;
+  overflow-wrap:anywhere;
+}
 """

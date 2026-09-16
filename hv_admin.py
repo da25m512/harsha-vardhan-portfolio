@@ -259,13 +259,14 @@ def _tab_overview(c: dict) -> None:
         _md(f'<div style="margin-bottom:18px"><span class="hv-pill warn">🔓 Messages public · {esc(msg_p)}</span></div>')
 
     pending = sum(1 for m in c["messages"] if not m.get("approved"))
-    cols = st.columns(5)
+    cols = st.columns(6)
     for col, (k, v) in zip(
         cols,
         [
             ("Projects", len(c["projects"])),
             ("Milestones", len(c["timeline"])),
             ("Stills", len(c["gallery"])),
+            ("Tools", len(c.get("software") or [])),
             ("Press", len(c["press"])),
             ("Messages waiting", pending),
         ],
@@ -1162,6 +1163,7 @@ def _tab_appearance(c: dict) -> None:
     )
     WHAT = {
         "statement": "your statement, bio and portrait",
+        "software": "the software you work in, as a grid of marks",
         "work": "the project contact sheet — every film you've added",
         "showreel": "the single reel player",
         "timeline": "your milestones, year by year",
@@ -1257,8 +1259,8 @@ def render(content: dict) -> None:
             st.rerun()
 
         tabs = st.tabs(
-            ["Overview", "Profile", "Work", "Journey", "Stills", "Press",
-             "Messages", "Appearance", "Storage"]
+            ["Overview", "Profile", "Work", "Toolkit", "Journey", "Stills",
+             "Press", "Messages", "Appearance", "Storage"]
         )
         with tabs[0]:
             _tab_overview(content)
@@ -1267,26 +1269,37 @@ def render(content: dict) -> None:
         with tabs[2]:
             _tab_projects(content)
         with tabs[3]:
+            st.caption(
+                "The software you work in. A logo is optional — an entry with "
+                "just a name shows as a wordmark. Upload logos you have the right "
+                "to use; they belong to their makers."
+            )
+            _simple_list(
+                content, "software", D.SOFTWARE_PATH,
+                [("name", "Software", "text"), ("url", "Logo (optional)", "image")],
+                "tool", required="name", heading="name",
+            )
+        with tabs[4]:
             _simple_list(
                 content, "timeline", D.TIMELINE_PATH,
                 [("year", "Year", "text"), ("title", "What happened", "text"), ("body", "Details", "area")],
                 "milestone",
             )
-        with tabs[4]:
+        with tabs[5]:
             _simple_list(
                 content, "gallery", D.GALLERY_PATH,
                 [("caption", "Caption", "text"), ("url", "Image", "image")],
                 "still", required="url", heading="caption",
             )
-        with tabs[5]:
+        with tabs[6]:
             _simple_list(
                 content, "press", D.PRESS_PATH,
                 [("quote", "Quote or award", "area"), ("source", "Source", "text"), ("year", "Year", "text")],
                 "mention",
             )
-        with tabs[6]:
-            _tab_messages(content)
         with tabs[7]:
-            _tab_appearance(content)
+            _tab_messages(content)
         with tabs[8]:
+            _tab_appearance(content)
+        with tabs[9]:
             _tab_storage(content)

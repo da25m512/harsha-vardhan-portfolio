@@ -13,6 +13,7 @@ SITE_PATH = "data/site.json"
 PROJECTS_PATH = "data/projects.json"
 TIMELINE_PATH = "data/timeline.json"
 GALLERY_PATH = "data/gallery.json"
+SOFTWARE_PATH = "data/software.json"
 PRESS_PATH = "data/press.json"
 MESSAGES_PATH = "data/messages.json"
 
@@ -53,6 +54,7 @@ DEFAULT_SITE: dict[str, Any] = {
     "cache_hero": True,
     "sections": {
         "statement": True,
+        "software": True,
         "work": True,
         "showreel": True,
         "timeline": True,
@@ -62,6 +64,7 @@ DEFAULT_SITE: dict[str, Any] = {
     },
     "section_titles": {
         "statement": "The Idea",
+        "software": "The Toolkit",
         "work": "Selected Work",
         "showreel": "Showreel",
         "timeline": "The Journey",
@@ -166,6 +169,7 @@ _PATH_BY_NAME = {
     "projects": PROJECTS_PATH,
     "timeline": TIMELINE_PATH,
     "gallery": GALLERY_PATH,
+    "software": SOFTWARE_PATH,
     "press": PRESS_PATH,
     "messages": MESSAGES_PATH,
 }
@@ -319,6 +323,7 @@ def load_content() -> dict[str, Any]:
         "projects": normalise_projects(_fetch(PROJECTS_PATH, "[]", v) or []),
         "timeline": _fetch(TIMELINE_PATH, "[]", v) or [],
         "gallery": _fetch(GALLERY_PATH, "[]", v) or [],
+        "software": _fetch(SOFTWARE_PATH, "[]", v) or [],
         "press": _fetch(PRESS_PATH, "[]", v) or [],
         "messages": _fetch(MESSAGES_PATH, "[]", v) or [],
     }
