@@ -16,6 +16,7 @@ GALLERY_PATH = "data/gallery.json"
 SOFTWARE_PATH = "data/software.json"
 PRESS_PATH = "data/press.json"
 MESSAGES_PATH = "data/messages.json"
+STATS_PATH = "data/stats.json"
 
 OWNER_NAME = "Marothu Harsha Vardhan"
 
@@ -125,6 +126,12 @@ def now_stamp() -> str:
     return time.strftime("%Y-%m-%d %H:%M", time.gmtime())
 
 
+def today_stamp() -> str:
+    """UTC date. Everything counted lands on the same day boundary wherever
+    the app happens to be running."""
+    return time.strftime("%Y-%m-%d", time.gmtime())
+
+
 # --------------------------------------------------------------------------
 # Store wiring
 # --------------------------------------------------------------------------
@@ -162,7 +169,7 @@ def get_store() -> Store:
 # listed there are read and written through the API with the token instead of
 # sitting where anyone can read them. Media stays public, because a browser
 # has to be able to fetch it without credentials.
-DEFAULT_PRIVATE_FILES = ("messages",)
+DEFAULT_PRIVATE_FILES = ("messages", "stats")
 
 _PATH_BY_NAME = {
     "site": SITE_PATH,
@@ -172,6 +179,7 @@ _PATH_BY_NAME = {
     "software": SOFTWARE_PATH,
     "press": PRESS_PATH,
     "messages": MESSAGES_PATH,
+    "stats": STATS_PATH,
 }
 
 
@@ -587,3 +595,94 @@ def verify_rebuild(plan: dict, rebuilt: list[dict]) -> list[str]:
         if path.startswith("media/") and path not in {t["path"] for t in plan["keep"]}:
             problems.append(f"unexpected extra file: {path}")
     return problems
+
+
+# --------------------------------------------------------------------------
+# Visit counting
+# --------------------------------------------------------------------------
+# Only ever a count. No addresses, no user agents, no cookies, nothing that
+# identifies anybody -- one integer per calendar day. Writing on every visit
+# would mean a commit per visit, so counts are held in memory and flushed
+# rarely; a restart can lose at most the handful gathered since the last write.
+_FLUSH_AFTER_VIEWS = 5
+_FLUSH_AFTER_SECONDS = 300
+_KEEP_DAYS = 120
+
+
+@st.cache_resource(show_spinner=False)
+def _view_buffer() -> dict:
+    return {"pending": 0, "last_flush": 0.0}
+
+
+def _blank_stats() -> dict:
+    return {"total": 0, "days": {}, "since": today_stamp(), "updated_at": ""}
+
+
+def read_stats() -> dict:
+    """Current counts, read straight from storage rather than the page cache."""
+    try:
+        raw = store_for(STATS_PATH).read_json(STATS_PATH, None)
+    except Exception:
+        raw = None
+    out = _blank_stats()
+    if isinstance(raw, dict):
+        out.update(raw)
+    days = out.get("days")
+    out["days"] = {str(k): int(v) for k, v in days.items()} if isinstance(days, dict) else {}
+    try:
+        out["total"] = int(out.get("total") or 0)
+    except (TypeError, ValueError):
+        out["total"] = 0
+    return out
+
+
+def _flush_views(force: bool = False) -> None:
+    buf = _view_buffer()
+    pending = int(buf.get("pending") or 0)
+    if pending <= 0:
+        return
+    waited = time.time() - float(buf.get("last_flush") or 0.0)
+    if not force and pending < _FLUSH_AFTER_VIEWS and waited < _FLUSH_AFTER_SECONDS:
+        return
+    if STATS_PATH not in private_paths():
+        # Counts are meant for the private repo only. store_for() would quietly
+        # fall back to the public one if the private repo were unreachable, so
+        # rather than publish visit numbers by accident, stop counting until it
+        # is back. Nothing is lost that was ever promised.
+        return
+    try:
+        stats = read_stats()
+        day = today_stamp()
+        stats["days"][day] = stats["days"].get(day, 0) + pending
+        stats["total"] = stats.get("total", 0) + pending
+        if not stats.get("since"):
+            stats["since"] = day
+        # keep the file small: a rolling window, not every day forever
+        for old in sorted(stats["days"])[:-_KEEP_DAYS]:
+            stats["days"].pop(old, None)
+        stats["updated_at"] = now_stamp()
+        store_for(STATS_PATH).write_json(STATS_PATH, stats, "content: visit counts")
+    except Exception:
+        return          # keep the pending count and try again next time
+    buf["pending"] = 0
+    buf["last_flush"] = time.time()
+
+
+def record_view() -> None:
+    """Count one visit to the public site. Never raises, never blocks a render."""
+    try:
+        if st.session_state.get("_hv_view_counted"):
+            return
+        st.session_state["_hv_view_counted"] = True
+        buf = _view_buffer()
+        buf["pending"] = int(buf.get("pending") or 0) + 1
+        _flush_views()
+    except Exception:
+        pass
+
+
+def pending_views() -> int:
+    try:
+        return int(_view_buffer().get("pending") or 0)
+    except Exception:
+        return 0
