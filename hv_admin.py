@@ -10,6 +10,7 @@ import streamlit as st
 import hv_data as D
 from hv_security import (
     attempt_login,
+    attr,
     enforce_session_timeout,
     esc,
     is_admin,
@@ -218,6 +219,94 @@ def _preview(url: str, kind: str = "image") -> None:
 
 
 # --------------------------------------------------------------------------
+def _views_chart(days: dict, span: int = 30) -> str:
+    """A 30-day bar chart, built as plain HTML so it matches the console.
+
+    One series, so no legend -- the heading names it. Bars carry rounded tops
+    anchored to a shared baseline with a gap between them, days with no visits
+    keep their slot as a faint tick so gaps in the run are visible rather than
+    silently closed up, and every bar is titled for hover. The fill is derived
+    from the site accent and darkened into the band that stays legible on this
+    surface, so it follows the accent if it is ever changed.
+    """
+    import time as _t
+
+    today = _t.time()
+    slots = []
+    for back in range(span - 1, -1, -1):
+        day = _t.strftime("%Y-%m-%d", _t.gmtime(today - back * 86400))
+        slots.append((day, int(days.get(day, 0) or 0)))
+    peak = max((v for _d, v in slots), default=0)
+
+    bars = []
+    for day, count in slots:
+        pct = (count / peak * 100) if peak else 0
+        cls = "hv-vbar" + ("" if count else " hv-vbar-zero")
+        label = f"{day}: {count} view" + ("" if count == 1 else "s")
+        bars.append(
+            f'<div class="{cls}" title="{attr(label)}">'
+            f'<i style="height:{max(pct, 1.6):.1f}%"></i></div>'
+        )
+
+    first, last = slots[0][0][5:], slots[-1][0][5:]
+    return (
+        f'<div class="hv-views" role="img" '
+        f'aria-label="{attr(f"Visits per day for the last {span} days")}">'
+        + "".join(bars)
+        + "</div>"
+        f'<div class="hv-views-axis"><span>{esc(first)}</span>'
+        f'<span>peak {peak}/day</span><span>{esc(last)}</span></div>'
+    )
+
+
+def _tab_views(c: dict) -> None:
+    stats = D.read_stats()
+    days = stats.get("days") or {}
+    import time as _t
+
+    def _last(n: int) -> int:
+        now = _t.time()
+        return sum(
+            int(days.get(_t.strftime("%Y-%m-%d", _t.gmtime(now - b * 86400)), 0) or 0)
+            for b in range(n)
+        )
+
+    pending = D.pending_views()
+    today = int(days.get(D.today_stamp(), 0) or 0)
+
+    st.subheader("Visits")
+    cols = st.columns(4)
+    cols[0].metric("All time", f"{stats.get('total', 0) + pending:,}",
+                   delta=f"since {stats.get('since') or '—'}", delta_color="off")
+    cols[1].metric("Today", f"{today + pending:,}", delta="so far", delta_color="off")
+    cols[2].metric("Last 7 days", f"{_last(7):,}", delta="rolling", delta_color="off")
+    cols[3].metric("Last 30 days", f"{_last(30):,}", delta="rolling", delta_color="off")
+
+    _md(_views_chart(days))
+
+    st.caption(
+        "A visit is one browser session opening the public site — not a person, "
+        "and not a page load, since moving around the page does not start a new "
+        "session. Your own visits to this console are not counted. Nothing is "
+        "stored but a number per day: no addresses, no browser details, no "
+        "cookies. Counts are held briefly and written in batches, so a restart "
+        f"can lose at most the few gathered since the last write ({pending} waiting "
+        "right now)."
+    )
+
+    with st.expander("The numbers, day by day"):
+        rows = [{"Day": d, "Visits": v} for d, v in sorted(days.items(), reverse=True)]
+        if rows:
+            st.dataframe(rows, hide_index=True, width="stretch")
+        else:
+            st.caption("Nothing counted yet.")
+
+    st.caption(
+        "Streamlit keeps its own figures too — **Manage app → Analytics** — which "
+        "count unique viewers rather than sessions, so the two will not agree."
+    )
+
+
 def _tab_overview(c: dict) -> None:
     ok, msg = D.store_status()
     cls = "ok" if ok else "bad"
@@ -1259,16 +1348,18 @@ def render(content: dict) -> None:
             st.rerun()
 
         tabs = st.tabs(
-            ["Overview", "Profile", "Work", "Toolkit", "Journey", "Stills",
-             "Press", "Messages", "Appearance", "Storage"]
+            ["Overview", "Visits", "Profile", "Work", "Toolkit", "Journey",
+             "Stills", "Press", "Messages", "Appearance", "Storage"]
         )
         with tabs[0]:
             _tab_overview(content)
         with tabs[1]:
-            _tab_profile(content)
+            _tab_views(content)
         with tabs[2]:
-            _tab_projects(content)
+            _tab_profile(content)
         with tabs[3]:
+            _tab_projects(content)
+        with tabs[4]:
             st.caption(
                 "The software you work in. A logo is optional — an entry with "
                 "just a name shows as a wordmark. Upload logos you have the right "
@@ -1279,27 +1370,27 @@ def render(content: dict) -> None:
                 [("name", "Software", "text"), ("url", "Logo (optional)", "image")],
                 "tool", required="name", heading="name",
             )
-        with tabs[4]:
+        with tabs[5]:
             _simple_list(
                 content, "timeline", D.TIMELINE_PATH,
                 [("year", "Year", "text"), ("title", "What happened", "text"), ("body", "Details", "area")],
                 "milestone",
             )
-        with tabs[5]:
+        with tabs[6]:
             _simple_list(
                 content, "gallery", D.GALLERY_PATH,
                 [("caption", "Caption", "text"), ("url", "Image", "image")],
                 "still", required="url", heading="caption",
             )
-        with tabs[6]:
+        with tabs[7]:
             _simple_list(
                 content, "press", D.PRESS_PATH,
                 [("quote", "Quote or award", "area"), ("source", "Source", "text"), ("year", "Year", "text")],
                 "mention",
             )
-        with tabs[7]:
-            _tab_messages(content)
         with tabs[8]:
-            _tab_appearance(content)
+            _tab_messages(content)
         with tabs[9]:
+            _tab_appearance(content)
+        with tabs[10]:
             _tab_storage(content)
