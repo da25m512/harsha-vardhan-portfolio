@@ -784,6 +784,7 @@ def _enhance() -> None:
 
 
 def render(content: dict[str, Any]) -> None:
+    D.record_view()
     site = content["site"]
     sec = site.get("sections", {})
     published = [p for p in content["projects"] if p.get("published", True)]
