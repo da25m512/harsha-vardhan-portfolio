@@ -167,6 +167,27 @@ a { color: var(--accent); }
 }
 .st-key-hv_admin [data-testid="stExpander"] { margin-bottom:7px; }
 
+/* ============ Visits chart (admin) ============ */
+.hv-views {
+  display:flex; align-items:flex-end; gap:2px; height:96px;
+  padding:10px 0 0; margin-top:6px;
+  border-bottom:1px solid var(--line);
+}
+.hv-views > div { flex:1 1 0; height:100%; display:flex; align-items:flex-end; min-width:0; }
+.hv-views i {
+  display:block; width:100%; border-radius:3px 3px 0 0;
+  background: var(--accent);
+  background: color-mix(in oklab, var(--accent) 86%, #0a0c0b);
+  transition: background .25s;
+}
+.hv-views > div:hover i { background: var(--accent); }
+.hv-vbar-zero i { background: var(--line); border-radius:0; }
+.hv-views-axis {
+  display:flex; justify-content:space-between; margin-top:7px;
+  font-family:var(--mono); font-size:9px; letter-spacing:.16em;
+  text-transform:uppercase; color:var(--paper-3);
+}
+
 /* ============ Toolkit ============ */
 /* Borders live on the cells, not as gaps over a coloured container: with
    auto-fill the last row is usually partial, and a container background would
