@@ -260,6 +260,11 @@ def _views_chart(days: dict, span: int = 30) -> str:
 
 
 def _tab_views(c: dict) -> None:
+    # The refresh runs before anything is read, so the figures drawn below are
+    # the figures in the file rather than the ones from a moment ago.
+    if st.session_state.pop("_views_refresh", False):
+        st.session_state["_views_result"] = D.flush_views()
+
     stats = D.read_stats()
     days = stats.get("days") or {}
     import time as _t
@@ -275,6 +280,36 @@ def _tab_views(c: dict) -> None:
     today = int(days.get(D.today_stamp(), 0) or 0)
 
     st.subheader("Visits")
+
+    if st.button("\u21bb Refresh counts", key="views_refresh_btn",
+                 help="Writes anything still waiting, then re-reads the counts "
+                      "from the private repo."):
+        st.session_state["_views_refresh"] = True
+        st.rerun()
+
+    result = st.session_state.pop("_views_result", None)
+    if result == "written":
+        st.success("The waiting counts are now stored.", icon="\u2705")
+    elif result == "idle":
+        st.caption("Nothing was waiting \u2014 these are the stored numbers.")
+    elif result == "failed":
+        st.error(
+            "The counts could not be written just now. Nothing was lost \u2014 they "
+            "are still waiting and will go out with the next write.",
+            icon="\U0001f6ab",
+        )
+
+    if D.views_blocked():
+        st.warning(
+            "Counting is paused. Visits are only ever stored in the private "
+            "repo, and `stats` is not routed there, so nothing is being "
+            "written and the figures below are whatever was saved before. Add "
+            "`\"stats\"` to the `files` list in the `[private]` section of your "
+            "secrets \u2014 or delete that line to use the default, which already "
+            "covers it \u2014 then reboot the app.",
+            icon="\u26a0\ufe0f",
+        )
+
     cols = st.columns(4)
     cols[0].metric("All time", f"{stats.get('total', 0) + pending:,}",
                    delta=f"since {stats.get('since') or '—'}", delta_color="off")
