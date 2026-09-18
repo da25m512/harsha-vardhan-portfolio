@@ -686,3 +686,39 @@ def pending_views() -> int:
         return int(_view_buffer().get("pending") or 0)
     except Exception:
         return 0
+
+
+def views_blocked() -> bool:
+    """True when counting is paused because stats is not in the private repo.
+
+    Worth surfacing: the guard in _flush_views is silent by design, so without
+    this the console would just show zeros with no explanation.
+    """
+    try:
+        return STATS_PATH not in private_paths()
+    except Exception:
+        return True
+
+
+def flush_views() -> str:
+    """Write anything still waiting, now, and say what happened.
+
+    The console's refresh button calls this so the numbers on screen are the
+    numbers in the file, rather than a file plus a buffer only this process
+    knows about. Returns one of:
+
+        "idle"     nothing was waiting
+        "written"  the pending counts are now stored
+        "blocked"  counting is paused (see views_blocked)
+        "failed"   the write did not go through; the counts are kept
+    """
+    try:
+        blocked = views_blocked()
+        if pending_views() <= 0:
+            return "blocked" if blocked else "idle"
+        if blocked:
+            return "blocked"
+        _flush_views(force=True)
+        return "written" if pending_views() <= 0 else "failed"
+    except Exception:
+        return "failed"
